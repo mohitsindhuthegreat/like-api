@@ -95,8 +95,8 @@ def handle_requests():
             raw_player_name = str(
                 data_after.get("AccountInfo", {}).get("PlayerNickname", "")
             )
-            # Clean the nickname to make it readable
-            player_name = real_token_generator.clean_nickname(raw_player_name)
+            # Keep the original nickname as is (user wants to see real Unicode characters)
+            player_name = raw_player_name
             like_given = after_like - before_like
             status = 1 if like_given != 0 else 2
 

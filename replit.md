@@ -56,12 +56,12 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 - Current: System running at peak efficiency with comprehensive nickname display support
 
 ## Recent Changes (July 24, 2025)
-- Enhanced nickname cleaning function with comprehensive Unicode character mapping
-- Added support for Cherokee characters (commonly used in gaming nicknames)
-- Added support for Cyrillic, Coptic, and mathematical modifier letters
-- Improved fallback mechanisms for unrecognized Unicode characters
-- Successfully converts complex nicknames like 'ᏫᎮ_ᎡøнIⲧ࿐' to readable 'YVHE_EonIL'
-- Created test suite to validate nickname cleaning functionality
+- **NICKNAME DISPLAY FIX**: Now shows original Unicode nicknames exactly as they appear in Free Fire
+- Changed from cleaned/converted nicknames back to original Unicode display per user request
+- User wanted to see real name 'ᏫᎮ_ᎡøнIⲧ࿐' instead of converted 'YVHE_EonIL'
+- Enhanced nickname cleaning function available but not used in API response
+- Added comprehensive Unicode character mapping for Cherokee, Cyrillic, and special characters
+- Created test suite to validate nickname functionality
 
 ## API Usage Examples
 ```bash
