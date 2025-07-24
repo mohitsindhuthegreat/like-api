@@ -72,7 +72,9 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 - **✅ DEPLOYMENT READY**: Multiple platform configurations (Vercel, Render, Netlify, Docker)
 - **✅ UNICODE NICKNAME SUPPORT**: Perfect Korean/Chinese/Arabic character display
 - **✅ AUTO-SERVER DETECTION**: Automatically finds correct server for any UID
-- **✅ DATABASE INTEGRATION**: PostgreSQL with proper fallback mechanisms
+- **✅ FULL ASYNCHRONOUS SYSTEM**: Complete async implementation for maximum performance
+- **✅ INTERNAL STORAGE ONLY**: No external database - everything stored within bot
+- **✅ ALL ACCOUNT PROCESSING**: System configured to use ALL 876 accounts (679 IND + 197 PK)
 - **✅ API OPTIMIZATION**: Faster response times with controlled concurrency
 
 ## API Usage Examples

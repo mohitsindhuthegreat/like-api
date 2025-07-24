@@ -487,7 +487,7 @@ class RealTokenGenerator:
             return None
 
     def generate_tokens_for_region_parallel(self, account_file: str, output_file: str, region_name: str) -> int:
-        """Generate tokens for all accounts in a region using parallel processing"""
+        """Generate tokens for ALL accounts in a region using parallel processing"""
         logger.info(f"Starting FAST parallel REAL JWT token generation for {region_name} region...")
         
         accounts = self.load_accounts(account_file)
@@ -496,6 +496,7 @@ class RealTokenGenerator:
             return 0
 
         total_accounts = len(accounts)
+        logger.info(f"🎯 Processing ALL {total_accounts} accounts from {account_file}")
         successful_tokens = []
         
         # Prepare account data for parallel processing

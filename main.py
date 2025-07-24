@@ -52,88 +52,48 @@ def unicode_jsonify(data, status_code=200):
     )
     return response
 
-# Database configuration - handle missing DATABASE_URL
-database_url = os.environ.get('DATABASE_URL')
-if database_url and DATABASE_AVAILABLE:
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-    }
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
-    # Initialize database
-    db.init_app(app)
-    
-    # Create tables
-    with app.app_context():
-        try:
-            db.create_all()
-            print("✅ Database initialized successfully")
-        except Exception as e:
-            print(f"❌ Database initialization failed: {e}")
-else:
-    print("⚠️ No DATABASE_URL found or database models unavailable - running without database")
+# DISABLE EXTERNAL DATABASE - Keep everything internal
+DATABASE_AVAILABLE = False
+database_url = None
+print("✅ Internal bot storage only - no external database")
+
+# Internal storage for player records - NO EXTERNAL DATABASE
+player_records = {}
 
 def save_player_record(uid, nickname, server_name, likes_count):
-    """Save or update player record in database"""
-    # Skip database operations if no database is configured
-    if not database_url or not DATABASE_AVAILABLE:
-        app.logger.info(f"📝 No database - would save UID {uid}: {nickname}")
-        return True
-        
+    """Save player record internally in bot"""
     try:
-        # Check if record already exists
-        existing_record = PlayerRecord.query.filter_by(uid=uid, server_name=server_name).first()
-        
-        if existing_record:
-            # Update existing record
-            existing_record.nickname = nickname
-            existing_record.likes_count = likes_count
-            existing_record.last_updated = datetime.utcnow()
-            app.logger.info(f"📝 Updated record for UID {uid}: {nickname}")
-        else:
-            # Create new record
-            new_record = PlayerRecord(
-                uid=uid,
-                nickname=nickname,
-                server_name=server_name,
-                likes_count=likes_count
-            )
-            db.session.add(new_record)
-            app.logger.info(f"📝 Created new record for UID {uid}: {nickname}")
-        
-        db.session.commit()
+        player_records[f"{uid}_{server_name}"] = {
+            "uid": uid,
+            "nickname": nickname,
+            "server_name": server_name,
+            "likes_count": likes_count,
+            "last_updated": datetime.utcnow().isoformat()
+        }
+        app.logger.info(f"📝 Internal storage: UID {uid}: {nickname}")
         return True
-        
     except Exception as e:
-        app.logger.error(f"❌ Database error for UID {uid}: {e}")
-        try:
-            db.session.rollback()
-        except:
-            pass
+        app.logger.error(f"❌ Internal storage error for UID {uid}: {e}")
         return False
 
 
 @app.route("/records", methods=["GET"])
 def get_records():
-    """Get all player records from database"""
-    # Skip database operations if no database is configured
-    if not database_url or not DATABASE_AVAILABLE:
-        return unicode_jsonify({
-            "total_records": 0,
-            "records": [],
-            "message": "No database configured"
-        })
-    
+    """Get all player records from internal storage"""
     try:
-        records = PlayerRecord.query.order_by(PlayerRecord.last_updated.desc()).limit(100).all()
+        records_list = list(player_records.values())
+        # Sort by last_updated descending
+        records_list.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
         return unicode_jsonify({
-            "total_records": len(records),
-            "records": [record.to_dict() for record in records]
+            "total_records": len(records_list),
+            "records": records_list[:100],  # Limit to 100 recent records
+            "message": "Internal bot storage"
         })
     except Exception as e:
         return unicode_jsonify({"error": str(e)}, 500)
+
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 @app.route("/like", methods=["GET"])
 def handle_requests():
@@ -165,8 +125,7 @@ def handle_requests():
             return unicode_jsonify({"error": f"UID {uid} not found on any available server"}, 404)
 
     try:
-
-        def process_request():
+        async def process_request_async():
             tokens = load_tokens(server_name)
             if tokens is None:
                 raise Exception("Failed to load tokens.")
@@ -205,8 +164,8 @@ def handle_requests():
             else:
                 url = "https://clientbp.ggblueshark.com/LikeProfile"
 
-            # Send likes with improved rate limiting handling
-            likes_sent = asyncio.run(send_multiple_requests(uid, server_name, url))
+            # Send likes with improved rate limiting handling - ASYNC
+            likes_sent = await send_multiple_requests(uid, server_name, url)
             app.logger.info(f"💫 Attempted to send likes for UID {uid}, successful requests: {likes_sent if likes_sent else 0}")
 
             # Use the same working token for final check
@@ -278,7 +237,13 @@ def handle_requests():
             }
             return response_data
 
-        result = process_request()
+        # Run async function in thread pool for Flask compatibility  
+        def run_async():
+            return asyncio.run(process_request_async())
+            
+        with ThreadPoolExecutor() as executor:
+            result = executor.submit(run_async).result()
+            
         return unicode_jsonify(result)
     except Exception as e:
         app.logger.error(f"Error processing request: {e}")
