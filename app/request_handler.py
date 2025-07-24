@@ -54,9 +54,9 @@ async def send_multiple_requests(uid, server_name, url):
     if tokens is None:
         return None
 
-    # Send likes with optimized approach for reliability  
+    # Send likes using ALL available tokens for maximum impact
     successful_requests = 0
-    max_concurrent = min(20, len(tokens))  # Limit concurrent requests
+    max_concurrent = min(15, len(tokens))  # Controlled concurrency for stability
     
     semaphore = asyncio.Semaphore(max_concurrent)
     
@@ -67,8 +67,8 @@ async def send_multiple_requests(uid, server_name, url):
                 return 1
             return 0
     
-    # Send requests with controlled concurrency
-    tasks = [send_with_semaphore(tokens[i]["token"]) for i in range(min(len(tokens), 50))]
+    # Use ALL available tokens for maximum like sending
+    tasks = [send_with_semaphore(tokens[i]["token"]) for i in range(len(tokens))]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     # Count successful requests

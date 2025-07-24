@@ -296,8 +296,8 @@ def status():
         "regions": ["India (IND)", "Pakistan (PK)", "Bangladesh (BD)", "Singapore (SG)"],
         "features": [
             "Auto-detect correct server for any UID",
-            "Multi-region support with 100+ real tokens",
-            "Automatic like sending (100 likes per request)",
+            "Multi-region support with 210+ real tokens",
+            "Use ALL available tokens for maximum likes",
             "Real-time token generation every 4 hours"
         ],
         "usage": {
