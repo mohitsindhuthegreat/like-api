@@ -8,7 +8,12 @@ from app.utils import load_tokens
 from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
 from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now
-from models import db, PlayerRecord
+try:
+    from models import db, PlayerRecord
+    DATABASE_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠️ Database models not available: {e}")
+    DATABASE_AVAILABLE = False
 from nickname_processor import nickname_processor
 
 app = Flask(__name__)
@@ -47,23 +52,36 @@ def unicode_jsonify(data, status_code=200):
     )
     return response
 
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-}
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Initialize database
-db.init_app(app)
-
-# Create tables
-with app.app_context():
-    db.create_all()
+# Database configuration - handle missing DATABASE_URL
+database_url = os.environ.get('DATABASE_URL')
+if database_url and DATABASE_AVAILABLE:
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+    }
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Initialize database
+    db.init_app(app)
+    
+    # Create tables
+    with app.app_context():
+        try:
+            db.create_all()
+            print("✅ Database initialized successfully")
+        except Exception as e:
+            print(f"❌ Database initialization failed: {e}")
+else:
+    print("⚠️ No DATABASE_URL found or database models unavailable - running without database")
 
 def save_player_record(uid, nickname, server_name, likes_count):
     """Save or update player record in database"""
+    # Skip database operations if no database is configured
+    if not database_url or not DATABASE_AVAILABLE:
+        app.logger.info(f"📝 No database - would save UID {uid}: {nickname}")
+        return True
+        
     try:
         # Check if record already exists
         existing_record = PlayerRecord.query.filter_by(uid=uid, server_name=server_name).first()
@@ -90,13 +108,24 @@ def save_player_record(uid, nickname, server_name, likes_count):
         
     except Exception as e:
         app.logger.error(f"❌ Database error for UID {uid}: {e}")
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except:
+            pass
         return False
 
 
 @app.route("/records", methods=["GET"])
 def get_records():
     """Get all player records from database"""
+    # Skip database operations if no database is configured
+    if not database_url or not DATABASE_AVAILABLE:
+        return unicode_jsonify({
+            "total_records": 0,
+            "records": [],
+            "message": "No database configured"
+        })
+    
     try:
         records = PlayerRecord.query.order_by(PlayerRecord.last_updated.desc()).limit(100).all()
         return unicode_jsonify({
@@ -297,14 +326,14 @@ def view_tokens():
             except:
                 tokens_data["pakistan"] = {"total": 0, "tokens": []}
         
-        return jsonify({
+        return unicode_jsonify({
             "status": "success",
             "message": "Generated tokens with clean nicknames",
             "data": tokens_data
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return unicode_jsonify({"error": str(e)}, 500)
 
 
 # Initialize token generation when app starts

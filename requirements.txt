@@ -13,3 +13,5 @@ schedule
 urllib3
 flask-sqlalchemy
 sqlalchemy
+psycopg2-binary
+serverless-wsgi

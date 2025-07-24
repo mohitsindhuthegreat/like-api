@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - SESSION_SECRET=${SESSION_SECRET:-dev-secret-key}
+      - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./tokens:/app/tokens
+      - ./IND_ACC.json:/app/IND_ACC.json
+      - ./PK_ACC.json:/app/PK_ACC.json
+    restart: unless-stopped
+
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_DB=freefire
+      - POSTGRES_USER=freefire
+      - POSTGRES_PASSWORD=password123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
