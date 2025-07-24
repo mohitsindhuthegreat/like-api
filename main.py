@@ -92,11 +92,63 @@ def handle_requests():
             data_after = json.loads(MessageToJson(after))
             after_like = int(data_after.get("AccountInfo", {}).get("Likes", 0))
             player_uid = int(data_after.get("AccountInfo", {}).get("UID", 0))
-            raw_player_name = str(
-                data_after.get("AccountInfo", {}).get("PlayerNickname", "")
-            )
-            # Keep the original nickname as is (user wants to see real Unicode characters)
-            player_name = raw_player_name
+            
+            # Enhanced nickname extraction and decoding
+            raw_player_name = data_after.get("AccountInfo", {}).get("PlayerNickname", "")
+            
+            # Robust Unicode handling and decoding for all scenarios
+            try:
+                player_name = raw_player_name
+                
+                # Handle different data types
+                if isinstance(raw_player_name, bytes):
+                    # Try different encoding methods for bytes
+                    for encoding in ['utf-8', 'utf-16', 'latin1', 'cp1252']:
+                        try:
+                            player_name = raw_player_name.decode(encoding)
+                            break
+                        except:
+                            continue
+                elif isinstance(raw_player_name, str):
+                    # Handle potential encoding issues in strings
+                    player_name = raw_player_name
+                    
+                    # Fix common Unicode escape sequences that might be corrupted
+                    import codecs
+                    try:
+                        # Try to decode Unicode escape sequences if present
+                        player_name = codecs.decode(player_name, 'unicode_escape')
+                    except:
+                        pass
+                else:
+                    # Convert other types to string
+                    player_name = str(raw_player_name)
+                
+                # Normalize Unicode characters to handle variations
+                import unicodedata
+                try:
+                    player_name = unicodedata.normalize('NFC', player_name)
+                except:
+                    pass
+                
+                # Remove problematic control characters but keep visible Unicode
+                import re
+                # Only remove actual control characters, not Unicode letters/symbols
+                player_name = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', player_name)
+                
+                # Clean up whitespace
+                player_name = player_name.strip()
+                
+                # Provide fallback only if completely empty
+                if not player_name:
+                    player_name = f"Player_{player_uid}"
+                    
+                # Enhanced logging for debugging
+                app.logger.info(f"Nickname processing - Raw: {repr(raw_player_name)} ({type(raw_player_name)}) -> Final: {repr(player_name)}")
+                    
+            except Exception as e:
+                app.logger.error(f"Error processing nickname for UID {player_uid}: {e}")
+                player_name = f"Player_{player_uid}"
             like_given = after_like - before_like
             status = 1 if like_given != 0 else 2
 
