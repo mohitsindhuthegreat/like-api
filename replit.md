@@ -6,21 +6,7 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 ## Current Features
 - Free Fire game API service with like functionality
 - Multi-server support for different regions (IND, PK, BD, BR, SG)
-- Encrypted communication using protobuf and AES encryption
-- Token management system for different regions
 
-## Recent Changes
-- 2025-07-24: **MAJOR UPDATE - Intelligent Server Auto-Detection System**
-  - ✅ Implemented automatic server detection for any UID
-  - ✅ Fixed UID 2942087766 issue - belongs to Pakistan (PK) server, not India
-  - ✅ Enhanced multi-server support: IND, PK, BD, SG with proper endpoint mapping  
-  - ✅ Smart fallback system tries multiple servers to find correct one
-  - ✅ Added comprehensive server detection logs and better error handling
-  - ✅ API now works with just UID parameter - auto-detects correct server
-  - ✅ Successfully tested: 2942087766 (PK server) and 3978250517 (IND server)
-  
-- 2025-01-24: Completed REAL JWT token generation system setup
-  - Integrated real JWT token generation using complete protobuf + encryption process
   - Implemented scheduled real JWT token generation every 4 hours
   - System runs completely built-in without web dashboard interface
   - Successfully generating authentic JWT tokens for both India and Pakistan regions
