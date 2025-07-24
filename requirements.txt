@@ -6,3 +6,8 @@ googleapis-common-protos
 pycryptodome
 protobuf
 Werkzeug
+colorama
+flask-caching
+crypto
+schedule
+urllib3
