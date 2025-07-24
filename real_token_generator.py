@@ -33,38 +33,43 @@ class RealTokenGenerator:
         self.is_running = False
         self.generation_thread = None
         
-    def get_token(self, password: str, uid: str) -> Optional[Dict]:
-        """Get initial access token"""
-        try:
-            url = "https://ffmconnect.live.gop.garenanow.com/oauth/guest/token/grant"
-            headers = {
-                "Host": "100067.connect.garena.com",
-                "User-Agent": "GarenaMSDK/4.0.19P4(G011A ;Android 9;en;US;)",
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "close"
-            }
-            data = {
-                "uid": uid,
-                "password": password,
-                "response_type": "token",
-                "client_type": "2",
-                "client_secret": "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3",
-                "client_id": "100067"
-            }
-            
-            res = requests.post(url, headers=headers, data=data, timeout=10)
-            if res.status_code != 200:
-                return None
+    def get_token(self, password: str, uid: str, retry_count: int = 2) -> Optional[Dict]:
+        """Get initial access token with retry logic"""
+        for attempt in range(retry_count + 1):
+            try:
+                url = "https://ffmconnect.live.gop.garenanow.com/oauth/guest/token/grant"
+                headers = {
+                    "Host": "100067.connect.garena.com",
+                    "User-Agent": "GarenaMSDK/4.0.19P4(G011A ;Android 9;en;US;)",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "Connection": "close"
+                }
+                data = {
+                    "uid": uid,
+                    "password": password,
+                    "response_type": "token",
+                    "client_type": "2",
+                    "client_secret": "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3",
+                    "client_id": "100067"
+                }
                 
-            token_json = res.json()
-            if "access_token" in token_json and "open_id" in token_json:
-                return token_json
-            else:
-                return None
-                
-        except Exception:
-            return None
+                res = requests.post(url, headers=headers, data=data, timeout=15)
+                if res.status_code == 200:
+                    token_json = res.json()
+                    if "access_token" in token_json and "open_id" in token_json:
+                        return token_json
+                        
+                # If failed and not last attempt, wait before retry
+                if attempt < retry_count:
+                    time.sleep(2)
+                    
+            except Exception as e:
+                if attempt < retry_count:
+                    time.sleep(2)
+                    continue
+                    
+        return None
 
     def encrypt_message(self, key: bytes, iv: bytes, plaintext: bytes) -> bytes:
         """Encrypt message using AES"""
@@ -129,8 +134,8 @@ class RealTokenGenerator:
     def generate_real_jwt_token(self, uid: str, password: str) -> Optional[Dict]:
         """Generate real JWT token using the complete process"""
         try:
-            # Step 1: Get access token
-            token_data = self.get_token(password, uid)
+            # Step 1: Get access token with retry
+            token_data = self.get_token(password, uid, retry_count=3)
             if not token_data:
                 return None
 
@@ -208,7 +213,25 @@ class RealTokenGenerator:
                 'ReleaseVersion': "OB49"
             }
 
-            response = requests.post(url, data=bytes.fromhex(edata), headers=headers, verify=False, timeout=15)
+            # Add session for better connection handling with retry
+            session = requests.Session()
+            session.verify = False
+            
+            # Try the request with retry logic
+            for attempt in range(3):
+                try:
+                    response = session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=25)
+                    if response.status_code == 200:
+                        break
+                    elif attempt < 2:  # Not last attempt
+                        time.sleep(1)
+                        continue
+                except Exception as e:
+                    if attempt < 2:  # Not last attempt
+                        time.sleep(1)
+                        continue
+                    else:
+                        raise e
 
             if response.status_code == 200:
                 example_msg = output_pb2.Garena_420()
@@ -316,8 +339,8 @@ class RealTokenGenerator:
                 else:
                     logger.warning(f"✗ Failed to generate token for UID {uid}")
                 
-                # Small delay to avoid rate limiting
-                time.sleep(3)
+                # Reduced delay to improve speed while avoiding rate limits
+                time.sleep(1.5)
                 
             except Exception as e:
                 logger.error(f"Error processing account {i} in {region_name}: {str(e)}")
