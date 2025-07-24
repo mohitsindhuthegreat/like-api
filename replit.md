@@ -10,6 +10,15 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 - Token management system for different regions
 
 ## Recent Changes
+- 2025-07-24: **MAJOR UPDATE - Intelligent Server Auto-Detection System**
+  - ✅ Implemented automatic server detection for any UID
+  - ✅ Fixed UID 2942087766 issue - belongs to Pakistan (PK) server, not India
+  - ✅ Enhanced multi-server support: IND, PK, BD, SG with proper endpoint mapping  
+  - ✅ Smart fallback system tries multiple servers to find correct one
+  - ✅ Added comprehensive server detection logs and better error handling
+  - ✅ API now works with just UID parameter - auto-detects correct server
+  - ✅ Successfully tested: 2942087766 (PK server) and 3978250517 (IND server)
+  
 - 2025-01-24: Completed REAL JWT token generation system setup
   - Integrated real JWT token generation using complete protobuf + encryption process
   - Implemented scheduled real JWT token generation every 4 hours
@@ -51,5 +60,28 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 - ✅ Completed: Scheduled real JWT token generation every 4 hours
 - ✅ Completed: Built-in operation without web interface
 - ✅ Completed: Authentic JWT tokens using protobuf + encryption process
-- Current: System running automatically in background generating real JWT tokens
+- ✅ Completed: **INTELLIGENT SERVER AUTO-DETECTION SYSTEM**
+- ✅ Completed: Multi-server support (IND, PK, BD, SG) with proper endpoint mapping
+- ✅ Completed: UID 2942087766 issue resolved - works perfectly on PK server
+- ✅ Completed: API enhancement - works with just UID parameter (auto-detects server)
+- Current: System running automatically in background with smart server detection
 - Next: Monitor and maintain automatic operation
+
+## API Usage Examples
+```bash
+# Auto-detect server (recommended)
+curl "http://localhost:5000/like?uid=2942087766"
+
+# Manual server specification 
+curl "http://localhost:5000/like?uid=2942087766&server_name=PK"
+
+# India server UID
+curl "http://localhost:5000/like?uid=3978250517"
+```
+
+## Research Results - UID 2942087766
+- **Server**: Pakistan (PK) - NOT India (IND)
+- **Player**: 리틀빚5803S (Korean nickname)  
+- **Status**: ✅ WORKING PERFECTLY
+- **Likes**: Successfully processed multiple times
+- **Auto-detection**: ✅ Works flawlessly

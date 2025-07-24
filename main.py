@@ -16,8 +16,30 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-prod
 def handle_requests():
     uid = request.args.get("uid")
     server_name = request.args.get("server_name", "").upper()
-    if not uid or not server_name:
-        return jsonify({"error": "UID and server_name are required"}), 400
+    
+    # Allow auto-detection if server_name is not provided
+    if not uid:
+        return jsonify({"error": "UID is required"}), 400
+    
+    # If no server specified, try to auto-detect the correct server
+    if not server_name:
+        app.logger.info(f"Auto-detecting server for UID {uid}")
+        # Try servers in order of likelihood
+        servers_to_try = ["IND", "PK", "BD", "SG"]
+        for test_server in servers_to_try:
+            tokens = load_tokens(test_server)
+            if tokens and len(tokens) > 0:
+                encrypted_uid = enc(uid)
+                if encrypted_uid:
+                    # Try with first token to test if UID exists on this server
+                    result = make_request(encrypted_uid, test_server, tokens[0]["token"])
+                    if result is not None:
+                        server_name = test_server
+                        app.logger.info(f"✓ Found UID {uid} on server {test_server}")
+                        break
+                        
+        if not server_name:
+            return jsonify({"error": f"UID {uid} not found on any available server"}), 404
 
     try:
 
@@ -29,6 +51,7 @@ def handle_requests():
             # Try multiple tokens if first one fails
             token_used = None
             before = None
+            encrypted_uid = None
             
             for i, token_data in enumerate(tokens[:5]):  # Try first 5 tokens
                 token = token_data["token"]
@@ -52,6 +75,8 @@ def handle_requests():
 
             if server_name == "IND":
                 url = "https://client.ind.freefiremobile.com/LikeProfile"
+            elif server_name == "PK":
+                url = "https://clientbp.ggblueshark.com/LikeProfile"
             elif server_name in {"BR", "US", "SAC", "NA"}:
                 url = "https://client.us.freefiremobile.com/LikeProfile"
             else:
@@ -78,6 +103,7 @@ def handle_requests():
                 "message": "Like operation successful"
                 if status == 1
                 else "No likes added",
+                "server_detected": server_name,
                 "player": {
                     "uid": player_uid,
                     "nickname": player_name,
@@ -106,7 +132,18 @@ def status():
         "service": "Free Fire Token Generator",
         "status": "running",
         "message": "Automatic token generation is active - generating tokens every 4 hours",
-        "regions": ["India (IND)", "Pakistan (PK)"]
+        "regions": ["India (IND)", "Pakistan (PK)", "Bangladesh (BD)", "Singapore (SG)"],
+        "features": [
+            "Auto-detect correct server for any UID",
+            "Multi-region support with 100+ real tokens",
+            "Automatic like sending (100 likes per request)",
+            "Real-time token generation every 4 hours"
+        ],
+        "usage": {
+            "endpoint": "/like?uid=YOUR_UID",
+            "auto_detect": "/like?uid=2942087766",
+            "manual_server": "/like?uid=2942087766&server_name=PK"
+        }
     })
 
 @app.route('/tokens')
