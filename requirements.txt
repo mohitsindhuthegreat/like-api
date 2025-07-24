@@ -11,3 +11,5 @@ flask-caching
 crypto
 schedule
 urllib3
+flask-sqlalchemy
+sqlalchemy

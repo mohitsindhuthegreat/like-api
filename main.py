@@ -2,11 +2,13 @@ from flask import Flask, request, jsonify, Response, render_template_string
 import asyncio
 import json
 import os
+from datetime import datetime
 from google.protobuf.json_format import MessageToJson
 from app.utils import load_tokens
 from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
 from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now
+from models import db, PlayerRecord
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
@@ -15,6 +17,64 @@ app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-prod
 app.config['JSON_AS_ASCII'] = False
 app.json.ensure_ascii = False
 
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Initialize database
+db.init_app(app)
+
+# Create tables
+with app.app_context():
+    db.create_all()
+
+def save_player_record(uid, nickname, server_name, likes_count):
+    """Save or update player record in database"""
+    try:
+        # Check if record already exists
+        existing_record = PlayerRecord.query.filter_by(uid=uid, server_name=server_name).first()
+        
+        if existing_record:
+            # Update existing record
+            existing_record.nickname = nickname
+            existing_record.likes_count = likes_count
+            existing_record.last_updated = datetime.utcnow()
+            app.logger.info(f"📝 Updated record for UID {uid}: {nickname}")
+        else:
+            # Create new record
+            new_record = PlayerRecord(
+                uid=uid,
+                nickname=nickname,
+                server_name=server_name,
+                likes_count=likes_count
+            )
+            db.session.add(new_record)
+            app.logger.info(f"📝 Created new record for UID {uid}: {nickname}")
+        
+        db.session.commit()
+        return True
+        
+    except Exception as e:
+        app.logger.error(f"❌ Database error for UID {uid}: {e}")
+        db.session.rollback()
+        return False
+
+
+@app.route("/records", methods=["GET"])
+def get_records():
+    """Get all player records from database"""
+    try:
+        records = PlayerRecord.query.order_by(PlayerRecord.last_updated.desc()).limit(100).all()
+        return jsonify({
+            "total_records": len(records),
+            "records": [record.to_dict() for record in records]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/like", methods=["GET"])
 def handle_requests():
@@ -144,6 +204,19 @@ def handle_requests():
                 
                 # Debug logging
                 app.logger.info(f"✅ Nickname decode: {repr(raw_nickname_bytes)} -> {repr(player_name)} -> Display: {player_name}")
+                
+                # SAVE TO DATABASE FIRST - Record nickname before showing response
+                save_success = save_player_record(
+                    uid=player_uid,
+                    nickname=player_name,
+                    server_name=server_name,
+                    likes_count=after_like
+                )
+                
+                if save_success:
+                    app.logger.info(f"💾 Database: Successfully recorded UID {player_uid} nickname: {player_name}")
+                else:
+                    app.logger.error(f"💾 Database: Failed to record UID {player_uid}")
                 
             except Exception as e:
                 app.logger.error(f"❌ Nickname processing error for UID {player_uid}: {e}")
