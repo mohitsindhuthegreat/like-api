@@ -11,6 +11,10 @@ from real_token_generator import real_token_generator, start_token_generation, s
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
 
+# Configure Flask to properly handle Unicode in JSON responses
+app.config['JSON_AS_ASCII'] = False
+app.json.ensure_ascii = False
+
 
 @app.route("/like", methods=["GET"])
 def handle_requests():
@@ -93,62 +97,63 @@ def handle_requests():
             after_like = int(data_after.get("AccountInfo", {}).get("Likes", 0))
             player_uid = int(data_after.get("AccountInfo", {}).get("UID", 0))
             
-            # Enhanced nickname extraction and decoding
-            raw_player_name = data_after.get("AccountInfo", {}).get("PlayerNickname", "")
-            
-            # Robust Unicode handling and decoding for all scenarios
+            # Get raw nickname directly from protobuf response before JSON conversion
             try:
-                player_name = raw_player_name
+                # Get the raw protobuf nickname field directly
+                raw_nickname_bytes = after.AccountInfo.PlayerNickname if hasattr(after.AccountInfo, 'PlayerNickname') else ""
                 
-                # Handle different data types
-                if isinstance(raw_player_name, bytes):
-                    # Try different encoding methods for bytes
-                    for encoding in ['utf-8', 'utf-16', 'latin1', 'cp1252']:
-                        try:
-                            player_name = raw_player_name.decode(encoding)
-                            break
-                        except:
-                            continue
-                elif isinstance(raw_player_name, str):
-                    # Handle potential encoding issues in strings
-                    player_name = raw_player_name
-                    
-                    # Fix common Unicode escape sequences that might be corrupted
-                    import codecs
+                # Process the raw bytes/string properly
+                if isinstance(raw_nickname_bytes, bytes):
+                    # Try UTF-8 first (most common)
                     try:
-                        # Try to decode Unicode escape sequences if present
-                        player_name = codecs.decode(player_name, 'unicode_escape')
-                    except:
-                        pass
+                        player_name = raw_nickname_bytes.decode('utf-8')
+                    except UnicodeDecodeError:
+                        # Try other encodings if UTF-8 fails
+                        for encoding in ['utf-16', 'latin1', 'cp1252', 'iso-8859-1']:
+                            try:
+                                player_name = raw_nickname_bytes.decode(encoding)
+                                break
+                            except:
+                                continue
+                        else:
+                            # If all fail, use error handling
+                            player_name = raw_nickname_bytes.decode('utf-8', errors='replace')
+                elif isinstance(raw_nickname_bytes, str):
+                    player_name = raw_nickname_bytes
                 else:
-                    # Convert other types to string
-                    player_name = str(raw_player_name)
+                    # Fallback to JSON method
+                    player_name = str(data_after.get("AccountInfo", {}).get("PlayerNickname", ""))
                 
-                # Normalize Unicode characters to handle variations
+                # Clean and normalize the nickname
                 import unicodedata
+                import re
+                
+                # Normalize Unicode to standard form
                 try:
                     player_name = unicodedata.normalize('NFC', player_name)
                 except:
                     pass
                 
-                # Remove problematic control characters but keep visible Unicode
-                import re
-                # Only remove actual control characters, not Unicode letters/symbols
-                player_name = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', player_name)
-                
-                # Clean up whitespace
+                # Remove only actual control characters, preserve all visible Unicode
+                player_name = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', player_name)
                 player_name = player_name.strip()
                 
-                # Provide fallback only if completely empty
+                # Only use fallback if truly empty
                 if not player_name:
                     player_name = f"Player_{player_uid}"
-                    
-                # Enhanced logging for debugging
-                app.logger.info(f"Nickname processing - Raw: {repr(raw_player_name)} ({type(raw_player_name)}) -> Final: {repr(player_name)}")
-                    
+                
+                # Debug logging
+                app.logger.info(f"✅ Nickname decode: {repr(raw_nickname_bytes)} -> {repr(player_name)} -> Display: {player_name}")
+                
             except Exception as e:
-                app.logger.error(f"Error processing nickname for UID {player_uid}: {e}")
-                player_name = f"Player_{player_uid}"
+                app.logger.error(f"❌ Nickname processing error for UID {player_uid}: {e}")
+                # Final fallback
+                try:
+                    player_name = str(data_after.get("AccountInfo", {}).get("PlayerNickname", ""))
+                    if not player_name:
+                        player_name = f"Player_{player_uid}"
+                except:
+                    player_name = f"Player_{player_uid}"
             like_given = after_like - before_like
             status = 1 if like_given != 0 else 2
 
