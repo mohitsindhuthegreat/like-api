@@ -6,7 +6,7 @@ from google.protobuf.json_format import MessageToJson
 from app.utils import load_tokens
 from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
-from simple_token_generator import simple_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now
+from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
