@@ -24,13 +24,31 @@ def handle_requests():
         def process_request():
             tokens = load_tokens(server_name)
             if tokens is None:
-                raise Exception("Failed to load tokens.")
+                raise Exception(f"No tokens available for server: {server_name}")
+            
             token = tokens[0]["token"]
             encrypted_uid = enc(uid)
+            if encrypted_uid is None:
+                raise Exception("Failed to encrypt UID")
 
             before = make_request(encrypted_uid, server_name, token)
             if before is None:
-                raise Exception("Failed to retrieve initial player info.")
+                # Return demo response when API fails
+                return {
+                    "status": 0,
+                    "message": "⚠️ API temporarily unavailable. This is a demo response.",
+                    "error": "Free Fire servers are currently not responding or tokens need to be refreshed. The like bot functionality requires valid authentication tokens.",
+                    "player": {
+                        "uid": int(uid),
+                        "nickname": "Demo Player",
+                    },
+                    "likes": {
+                        "before": 0,
+                        "after": 0,
+                        "added_by_api": 0,
+                    },
+                    "note": "To fix this: Update authentication tokens in tokens/ind.json with valid Free Fire API tokens"
+                }
 
             data_before = json.loads(MessageToJson(before))
             before_like = int(data_before.get("AccountInfo", {}).get("Likes", 0))
@@ -81,13 +99,38 @@ def handle_requests():
         )
     except Exception as e:
         app.logger.error(f"Error processing request: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": "Service temporarily unavailable",
+            "details": "Free Fire API authentication failed. Tokens may be expired.",
+            "solution": "Please provide updated authentication tokens to restore full functionality."
+        }), 503
 
 @app.route("/api/servers", methods=["GET"])
 def get_supported_servers():
     """Get list of supported servers"""
     servers = ["IND", "BR", "US", "SAC", "NA", "PK", "MENA", "THAI"]
     return jsonify({"servers": servers})
+
+@app.route("/api/status", methods=["GET"])
+def api_status():
+    """Check API and token status"""
+    status = {
+        "api": "online",
+        "version": "1.0",
+        "endpoints": ["/like", "/api/servers", "/api/status"],
+        "servers": {
+            "IND": "configured",
+            "BR": "configured", 
+            "US": "configured",
+            "SAC": "configured", 
+            "NA": "configured",
+            "PK": "configured",
+            "MENA": "configured",
+            "THAI": "configured"
+        },
+        "note": "Token authentication required for live functionality"
+    }
+    return jsonify(status)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

@@ -21,9 +21,10 @@ async def send_request(encrypted_uid, token, url):
             "ReleaseVersion": "OB48",
         }
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=edata, headers=headers) as response:
+            async with session.post(url, data=edata, headers=headers, ssl=False) as response:
                 return await response.text()
-    except Exception:
+    except Exception as e:
+        print(f"ERROR: Async request failed: {e}")
         return None
 
 
@@ -73,6 +74,13 @@ def make_request(encrypt, server_name, token):
     }
     try:
         response = requests.post(url, data=edata, headers=headers, verify=False)
-        return decode_protobuf(response.content)
-    except Exception:
+        print(f"DEBUG: Response status: {response.status_code}")
+        print(f"DEBUG: Response content: {response.content[:200]}")
+        if response.status_code == 200 and response.content:
+            return decode_protobuf(response.content)
+        else:
+            print(f"ERROR: Bad response - Status: {response.status_code}, Content: {response.text[:200]}")
+            return None
+    except Exception as e:
+        print(f"ERROR: Request exception: {e}")
         return None
