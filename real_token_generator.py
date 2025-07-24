@@ -13,6 +13,8 @@ import my_pb2
 import output_pb2
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
+import concurrent.futures
+from threading import Lock
 
 # Disable SSL warning
 warnings.filterwarnings("ignore", category=InsecureRequestWarning)
@@ -32,6 +34,18 @@ class RealTokenGenerator:
     def __init__(self):
         self.is_running = False
         self.generation_thread = None
+        self.tokens_lock = Lock()
+        # Create persistent session for reuse
+        self.session = requests.Session()
+        self.session.verify = False
+        # Configure session with connection pooling
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=20,
+            pool_maxsize=100,
+            max_retries=3
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
         
     def get_token(self, password: str, uid: str, retry_count: int = 2) -> Optional[Dict]:
         """Get initial access token with retry logic"""
@@ -54,19 +68,19 @@ class RealTokenGenerator:
                     "client_id": "100067"
                 }
                 
-                res = requests.post(url, headers=headers, data=data, timeout=15)
+                res = self.session.post(url, headers=headers, data=data, timeout=8)
                 if res.status_code == 200:
                     token_json = res.json()
                     if "access_token" in token_json and "open_id" in token_json:
                         return token_json
                         
-                # If failed and not last attempt, wait before retry
+                # If failed and not last attempt, wait shorter before retry
                 if attempt < retry_count:
-                    time.sleep(2)
+                    time.sleep(0.5)
                     
             except Exception as e:
                 if attempt < retry_count:
-                    time.sleep(2)
+                    time.sleep(0.5)
                     continue
                     
         return None
@@ -213,22 +227,18 @@ class RealTokenGenerator:
                 'ReleaseVersion': "OB49"
             }
 
-            # Add session for better connection handling with retry
-            session = requests.Session()
-            session.verify = False
-            
-            # Try the request with retry logic
-            for attempt in range(3):
+            # Try the request with retry logic using persistent session
+            for attempt in range(2):  # Reduced attempts for speed
                 try:
-                    response = session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=25)
+                    response = self.session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=12)
                     if response.status_code == 200:
                         break
-                    elif attempt < 2:  # Not last attempt
-                        time.sleep(1)
+                    elif attempt < 1:  # Not last attempt
+                        time.sleep(0.3)
                         continue
                 except Exception as e:
-                    if attempt < 2:  # Not last attempt
-                        time.sleep(1)
+                    if attempt < 1:  # Not last attempt
+                        time.sleep(0.3)
                         continue
                     else:
                         raise e
@@ -302,48 +312,71 @@ class RealTokenGenerator:
             logger.error(f"Error saving tokens to {file_path}: {str(e)}")
             return False
 
-    def generate_tokens_for_region(self, account_file: str, output_file: str, region_name: str) -> int:
-        """Generate tokens for all accounts in a region"""
-        logger.info(f"Starting REAL JWT token generation for {region_name} region...")
+    def process_single_account(self, account_data):
+        """Process a single account for token generation"""
+        account, i, total_accounts, region_name = account_data
+        try:
+            guest_info = account.get('guest_account_info', {})
+            uid = guest_info.get('com.garena.msdk.guest_uid')
+            password = guest_info.get('com.garena.msdk.guest_password')
+            
+            if not uid or not password:
+                logger.warning(f"Invalid account data at position {i}")
+                return None
+
+            logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
+            
+            token_result = self.generate_real_jwt_token(uid, password)
+            if token_result:
+                logger.info(f"✓ Generated REAL JWT token for UID {uid}")
+                return token_result
+            else:
+                logger.warning(f"✗ Failed to generate token for UID {uid}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error processing account {i} in {region_name}: {str(e)}")
+            return None
+
+    def generate_tokens_for_region_parallel(self, account_file: str, output_file: str, region_name: str) -> int:
+        """Generate tokens for all accounts in a region using parallel processing"""
+        logger.info(f"Starting FAST parallel REAL JWT token generation for {region_name} region...")
         
         accounts = self.load_accounts(account_file)
         if not accounts:
             logger.warning(f"No accounts found in {account_file}")
             return 0
 
-        successful_tokens = []
         total_accounts = len(accounts)
+        successful_tokens = []
         
-        for i, account in enumerate(accounts, 1):
-            try:
-                guest_info = account.get('guest_account_info', {})
-                uid = guest_info.get('com.garena.msdk.guest_uid')
-                password = guest_info.get('com.garena.msdk.guest_password')
-                
-                if not uid or not password:
-                    logger.warning(f"Invalid account data in {account_file} at position {i}")
-                    continue
-
-                logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
-                
-                token_result = self.generate_real_jwt_token(uid, password)
-                if token_result:
-                    successful_tokens.append(token_result)
-                    logger.info(f"✓ Generated REAL JWT token for UID {uid}")
-                else:
-                    logger.warning(f"✗ Failed to generate token for UID {uid}")
-                
-                # Reduced delay to improve speed while avoiding rate limits
-                time.sleep(1.5)
-                
-            except Exception as e:
-                logger.error(f"Error processing account {i} in {region_name}: {str(e)}")
-                continue
+        # Prepare account data for parallel processing
+        account_data_list = [
+            (account, i+1, total_accounts, region_name) 
+            for i, account in enumerate(accounts)
+        ]
+        
+        # Use ThreadPoolExecutor for parallel processing with optimized thread count
+        max_workers = min(15, total_accounts)  # Increased to 15 concurrent requests for even faster speed
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_account = {
+                executor.submit(self.process_single_account, account_data): account_data 
+                for account_data in account_data_list
+            }
+            
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(future_to_account):
+                result = future.result()
+                if result:
+                    with self.tokens_lock:
+                        successful_tokens.append(result)
 
         # Save successful tokens
         if successful_tokens:
             self.save_tokens(successful_tokens, output_file)
-            logger.info(f"✅ {region_name} REAL JWT token generation completed: {len(successful_tokens)}/{total_accounts} successful")
+            logger.info(f"✅ {region_name} FAST JWT token generation completed: {len(successful_tokens)}/{total_accounts} successful")
         else:
             logger.warning(f"❌ No tokens generated for {region_name}")
             
@@ -362,7 +395,7 @@ class RealTokenGenerator:
         
         for account_file, output_file, region_name in regions:
             try:
-                count = self.generate_tokens_for_region(account_file, output_file, region_name)
+                count = self.generate_tokens_for_region_parallel(account_file, output_file, region_name)
                 total_generated += count
             except Exception as e:
                 logger.error(f"Failed to generate tokens for {region_name}: {str(e)}")
