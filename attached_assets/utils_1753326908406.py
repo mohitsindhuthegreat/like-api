@@ -7,8 +7,6 @@ def load_tokens(server_name):
             path = "tokens/ind.json"
         elif server_name in {"BR", "US", "SAC", "NA"}:
             path = "tokens/br.json"
-        elif server_name == "PK":
-            path = "tokens/bd.json"
         else:
             path = "tokens/bd.json"
         with open(path, "r") as f:

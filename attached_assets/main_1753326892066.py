@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, Response, render_template
+from flask import Flask, request, jsonify, Response
 import asyncio
 import json
 from google.protobuf.json_format import MessageToJson
@@ -8,10 +8,6 @@ from app.request_handler import make_request, send_multiple_requests
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
-def index():
-    """Render the main interface for testing the API"""
-    return render_template("index.html")
 
 @app.route("/like", methods=["GET"])
 def handle_requests():
@@ -21,6 +17,7 @@ def handle_requests():
         return jsonify({"error": "UID and server_name are required"}), 400
 
     try:
+
         def process_request():
             tokens = load_tokens(server_name)
             if tokens is None:
@@ -39,8 +36,6 @@ def handle_requests():
                 url = "https://client.ind.freefiremobile.com/LikeProfile"
             elif server_name in {"BR", "US", "SAC", "NA"}:
                 url = "https://client.us.freefiremobile.com/LikeProfile"
-            elif server_name == "PK":
-                url = "https://clientbp.ggblueshark.com/LikeProfile"
             else:
                 url = "https://clientbp.ggblueshark.com/LikeProfile"
 
@@ -83,11 +78,6 @@ def handle_requests():
         app.logger.error(f"Error processing request: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/servers", methods=["GET"])
-def get_supported_servers():
-    """Get list of supported servers"""
-    servers = ["IND", "BR", "US", "SAC", "NA", "PK", "MENA", "THAI"]
-    return jsonify({"servers": servers})
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=8000,debug=True, use_reloader=False)

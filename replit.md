@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a Free Fire Like Bot API service built with Flask that automates the process of sending likes to Free Fire players across multiple servers. The application uses Protocol Buffers for API communication, AES encryption for securing UIDs, and supports various Free Fire servers including IND, BR, US, SAC, NA, MENA, and THAI.
+This is a Free Fire Like Bot API service built with Flask that automates the process of sending likes to Free Fire players across multiple servers. The application uses Protocol Buffers for API communication, AES encryption for securing UIDs, and supports various Free Fire servers including IND, BR, US, SAC, NA, PK, MENA, and THAI.
 
 ## User Preferences
 
