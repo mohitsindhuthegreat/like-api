@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, Response, render_template_string
+from flask import Flask, request, Response, render_template_string
 import asyncio
 import json
 import os
@@ -9,13 +9,43 @@ from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
 from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now
 from models import db, PlayerRecord
+from nickname_processor import nickname_processor
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
 
-# Configure Flask to properly handle Unicode in JSON responses
+# Configure Flask to properly handle Unicode in JSON responses - ENHANCED
 app.config['JSON_AS_ASCII'] = False
-app.json.ensure_ascii = False
+app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
+try:
+    app.json.ensure_ascii = False
+    app.json.sort_keys = False
+except AttributeError:
+    # Fallback for older Flask versions
+    pass
+
+# Custom JSON encoder to ensure proper Unicode display
+import json
+from flask.json.provider import DefaultJSONProvider
+
+class UnicodeJSONProvider(DefaultJSONProvider):
+    def dumps(self, obj, **kwargs):
+        kwargs.setdefault('ensure_ascii', False)
+        kwargs.setdefault('separators', (',', ':'))
+        return json.dumps(obj, **kwargs)
+
+app.json = UnicodeJSONProvider(app)
+
+# Custom jsonify function for proper Unicode display
+def unicode_jsonify(data, status_code=200):
+    """Custom jsonify that properly handles Unicode characters"""
+    response_data = json.dumps(data, ensure_ascii=False, separators=(',', ':'))
+    response = Response(
+        response_data,
+        status=status_code,
+        mimetype='application/json; charset=utf-8'
+    )
+    return response
 
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
@@ -69,12 +99,12 @@ def get_records():
     """Get all player records from database"""
     try:
         records = PlayerRecord.query.order_by(PlayerRecord.last_updated.desc()).limit(100).all()
-        return jsonify({
+        return unicode_jsonify({
             "total_records": len(records),
             "records": [record.to_dict() for record in records]
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return unicode_jsonify({"error": str(e)}, 500)
 
 @app.route("/like", methods=["GET"])
 def handle_requests():
@@ -83,7 +113,7 @@ def handle_requests():
     
     # Allow auto-detection if server_name is not provided
     if not uid:
-        return jsonify({"error": "UID is required"}), 400
+        return unicode_jsonify({"error": "UID is required"}, 400)
     
     # If no server specified, try to auto-detect the correct server
     if not server_name:
@@ -103,7 +133,7 @@ def handle_requests():
                         break
                         
         if not server_name:
-            return jsonify({"error": f"UID {uid} not found on any available server"}), 404
+            return unicode_jsonify({"error": f"UID {uid} not found on any available server"}, 404)
 
     try:
 
@@ -157,55 +187,20 @@ def handle_requests():
             after_like = int(data_after.get("AccountInfo", {}).get("Likes", 0))
             player_uid = int(data_after.get("AccountInfo", {}).get("UID", 0))
             
-            # Get raw nickname directly from protobuf response before JSON conversion
+            # ADVANCED NICKNAME PROCESSING - Get raw data from protobuf
             try:
-                # Get the raw protobuf nickname field directly
-                raw_nickname_bytes = after.AccountInfo.PlayerNickname if hasattr(after.AccountInfo, 'PlayerNickname') else ""
+                # Extract raw nickname data directly from protobuf (before JSON conversion)
+                raw_nickname_data = after.AccountInfo.PlayerNickname if hasattr(after.AccountInfo, 'PlayerNickname') else ""
                 
-                # Process the raw bytes/string properly
-                if isinstance(raw_nickname_bytes, bytes):
-                    # Try UTF-8 first (most common)
-                    try:
-                        player_name = raw_nickname_bytes.decode('utf-8')
-                    except UnicodeDecodeError:
-                        # Try other encodings if UTF-8 fails
-                        for encoding in ['utf-16', 'latin1', 'cp1252', 'iso-8859-1']:
-                            try:
-                                player_name = raw_nickname_bytes.decode(encoding)
-                                break
-                            except:
-                                continue
-                        else:
-                            # If all fail, use error handling
-                            player_name = raw_nickname_bytes.decode('utf-8', errors='replace')
-                elif isinstance(raw_nickname_bytes, str):
-                    player_name = raw_nickname_bytes
-                else:
-                    # Fallback to JSON method
-                    player_name = str(data_after.get("AccountInfo", {}).get("PlayerNickname", ""))
+                # Use advanced nickname processor for perfect Unicode handling
+                player_name = nickname_processor.process_raw_nickname(raw_nickname_data, player_uid)
                 
-                # Clean and normalize the nickname
-                import unicodedata
-                import re
+                # Get detailed debug info
+                debug_info = nickname_processor.get_display_info(player_name)
+                app.logger.info(f"🎮 UID {player_uid} | Raw: {repr(raw_nickname_data)} | Final: {repr(player_name)}")
+                app.logger.info(f"📊 Nickname Info: Length={debug_info['length']}, Categories={debug_info['unicode_categories']}")
                 
-                # Normalize Unicode to standard form
-                try:
-                    player_name = unicodedata.normalize('NFC', player_name)
-                except:
-                    pass
-                
-                # Remove only actual control characters, preserve all visible Unicode
-                player_name = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', player_name)
-                player_name = player_name.strip()
-                
-                # Only use fallback if truly empty
-                if not player_name:
-                    player_name = f"Player_{player_uid}"
-                
-                # Debug logging
-                app.logger.info(f"✅ Nickname decode: {repr(raw_nickname_bytes)} -> {repr(player_name)} -> Display: {player_name}")
-                
-                # SAVE TO DATABASE FIRST - Record nickname before showing response
+                # RECORD TO DATABASE FIRST (before response)
                 save_success = save_player_record(
                     uid=player_uid,
                     nickname=player_name,
@@ -219,18 +214,13 @@ def handle_requests():
                     app.logger.error(f"💾 Database: Failed to record UID {player_uid}")
                 
             except Exception as e:
-                app.logger.error(f"❌ Nickname processing error for UID {player_uid}: {e}")
-                # Final fallback
-                try:
-                    player_name = str(data_after.get("AccountInfo", {}).get("PlayerNickname", ""))
-                    if not player_name:
-                        player_name = f"Player_{player_uid}"
-                except:
-                    player_name = f"Player_{player_uid}"
+                app.logger.error(f"❌ Critical nickname processing error for UID {player_uid}: {e}")
+                # Emergency fallback
+                player_name = f"Player_{player_uid}"
             like_given = after_like - before_like
             status = 1 if like_given != 0 else 2
 
-            return {
+            response_data = {
                 "status": status,
                 "message": "Like operation successful"
                 if status == 1
@@ -246,21 +236,20 @@ def handle_requests():
                     "added_by_api": like_given,
                 },
             }
+            return response_data
 
         result = process_request()
-        return Response(
-            json.dumps(result, indent=2, sort_keys=False), mimetype="application/json"
-        )
+        return unicode_jsonify(result)
     except Exception as e:
         app.logger.error(f"Error processing request: {e}")
-        return jsonify({"error": str(e)}), 500
+        return unicode_jsonify({"error": str(e)}, 500)
 
 
 # Simple status endpoint (no web interface)
 @app.route('/')
 def status():
     """Simple status message"""
-    return jsonify({
+    return unicode_jsonify({
         "service": "Free Fire Token Generator",
         "status": "running",
         "message": "Automatic token generation is active - generating tokens every 4 hours",
