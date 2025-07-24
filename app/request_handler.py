@@ -1,7 +1,7 @@
 import aiohttp
 import asyncio
 import requests
-from app.utils import load_tokens, get_server_url
+from app.utils import load_tokens
 from app.encryption import encrypt_message
 from app.protobuf_handler import create_like_protobuf, decode_protobuf
 
@@ -18,7 +18,7 @@ async def send_request(encrypted_uid, token, url):
             "Expect": "100-continue",
             "X-Unity-Version": "2018.4.11f1",
             "X-GA": "v1 1",
-            "ReleaseVersion": "OB48",
+            "ReleaseVersion": "OB49",
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=edata, headers=headers) as response:
@@ -50,8 +50,12 @@ async def send_multiple_requests(uid, server_name, url):
 
 
 def make_request(encrypt, server_name, token):
-    base_url = get_server_url(server_name)
-    url = f"{base_url}/GetPlayerPersonalShow"
+    if server_name == "IND":
+        url = "https://client.ind.freefiremobile.com/GetPlayerPersonalShow"
+    elif server_name in {"BR", "US", "SAC", "NA"}:
+        url = "https://client.us.freefiremobile.com/GetPlayerPersonalShow"
+    else:
+        url = "https://clientbp.ggblueshark.com/GetPlayerPersonalShow"
 
     edata = bytes.fromhex(encrypt)
     headers = {
@@ -63,7 +67,7 @@ def make_request(encrypt, server_name, token):
         "Expect": "100-continue",
         "X-Unity-Version": "2018.4.11f1",
         "X-GA": "v1 1",
-        "ReleaseVersion": "OB48",
+        "ReleaseVersion": "OB49",
     }
     try:
         response = requests.post(url, data=edata, headers=headers, verify=False)
