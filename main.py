@@ -92,9 +92,11 @@ def handle_requests():
             data_after = json.loads(MessageToJson(after))
             after_like = int(data_after.get("AccountInfo", {}).get("Likes", 0))
             player_uid = int(data_after.get("AccountInfo", {}).get("UID", 0))
-            player_name = str(
+            raw_player_name = str(
                 data_after.get("AccountInfo", {}).get("PlayerNickname", "")
             )
+            # Clean the nickname to make it readable
+            player_name = real_token_generator.clean_nickname(raw_player_name)
             like_given = after_like - before_like
             status = 1 if like_given != 0 else 2
 

@@ -127,23 +127,85 @@ class RealTokenGenerator:
             return {}
 
     def clean_nickname(self, nickname: str) -> str:
-        """Clean and make nickname readable"""
+        """Clean and make nickname readable with proper Unicode handling"""
         if not nickname:
             return "Player"
             
-        # Remove special Unicode characters and make readable
         import re
+        import unicodedata
         
-        # Replace common encoded characters with readable text
-        cleaned = nickname.replace('CHÃ—FF~', 'FF_')
-        cleaned = re.sub(r'[^\w\s\-_]', '', cleaned)  # Remove special chars
-        cleaned = cleaned.strip()
-        
-        # If still empty or too short, use a default
-        if len(cleaned) < 2:
-            return "FreeFire_Player"
+        try:
+            # Try to normalize Unicode characters first
+            normalized = unicodedata.normalize('NFKD', nickname)
             
-        return cleaned
+            # Define Unicode character mapping for special characters
+            unicode_map = {
+                # Small caps letters
+                '\u1d22': 'R',  # ᴿ
+                '\u1d0f': 'O',  # ᴏ
+                '\u0280': 'R',  # ʀ 
+                '\u1d0f': 'O',  # ᴏ
+                '\u3164': '',   # ㅤ (invisible separator)
+                '\u026a': 'I',  # ɪ
+                '\ua731': 'S',  # ꜱ
+                '\u029f': 'L',  # ʟ
+                '\u026a': 'I',  # ɪ
+                '\u1d20': 'T',  # ᴛ
+                '\u1d07': 'E',  # ᴇ
+                
+                # Additional special characters
+                '\u0299': 'B',  # ʙ
+                '\u029c': 'H',  # ʜ
+                '\u0274': 'N',  # ɴ
+                '\u1d04': 'C',  # ᴄ
+                '\u1d05': 'D',  # ᴅ
+                '\u1d0a': 'J',  # ᴊ
+                '\u1d0b': 'K',  # ᴋ
+                '\u1d0c': 'L',  # ʟ
+                '\u1d0d': 'M',  # ᴍ
+                '\u1d18': 'P',  # ᴘ
+                '\u1d1b': 'T',  # ᴛ
+                '\u1d1c': 'U',  # ᴜ
+                '\u1d21': 'V',  # ᴠ
+                '\u1d22': 'W',  # ᴡ
+                '\u028f': 'Y',  # ʏ
+                '\u1d22': 'Z',  # ᴢ
+            }
+            
+            # Replace Unicode characters with readable equivalents
+            cleaned = nickname
+            for unicode_char, replacement in unicode_map.items():
+                cleaned = cleaned.replace(unicode_char, replacement)
+            
+            # Remove remaining invisible/control characters
+            cleaned = re.sub(r'[\u3164\u200b\u200c\u200d\ufeff]', '', cleaned)
+            
+            # Keep readable characters including Korean, Chinese, Japanese, and other scripts
+            # Remove only control characters and keep most Unicode letters/numbers
+            cleaned = re.sub(r'[\u0000-\u001f\u007f-\u009f\u2000-\u200f\u2028-\u202f\u205f-\u206f]', '', cleaned)
+            cleaned = cleaned.strip()
+            
+            # If result is too short or empty, try to extract any Latin characters
+            if len(cleaned) < 2:
+                # Try to extract any ASCII letters/numbers
+                ascii_only = re.sub(r'[^\x20-\x7E]', '', nickname)
+                ascii_only = re.sub(r'[^\w\s\-_]', '', ascii_only).strip()
+                
+                if len(ascii_only) >= 2:
+                    return ascii_only
+                else:
+                    return "FreeFire_Player"
+            
+            return cleaned
+            
+        except Exception as e:
+            # Fallback: extract any readable ASCII characters
+            try:
+                ascii_fallback = re.sub(r'[^\x20-\x7E]', '', nickname)
+                ascii_fallback = re.sub(r'[^\w\s\-_]', '', ascii_fallback).strip()
+                return ascii_fallback if len(ascii_fallback) >= 2 else "FreeFire_Player"
+            except:
+                return "FreeFire_Player"
 
     def generate_real_jwt_token(self, uid: str, password: str) -> Optional[Dict]:
         """Generate real JWT token using the complete process"""
