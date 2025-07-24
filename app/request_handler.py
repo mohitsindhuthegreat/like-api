@@ -15,15 +15,29 @@ async def send_request(encrypted_uid, token, url):
             "Accept-Encoding": "gzip",
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/x-www-form-urlencoded",
-            "Expect": "100-continue",
             "X-Unity-Version": "2018.4.11f1",
             "X-GA": "v1 1",
             "ReleaseVersion": "OB49",
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=edata, headers=headers) as response:
-                return await response.text()
-    except Exception:
+        
+        # Optimized timeout and retry logic
+        timeout = aiohttp.ClientTimeout(total=8)  # Faster timeout
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            try:
+                async with session.post(url, data=edata, headers=headers) as response:
+                    if response.status == 200:
+                        return await response.text()
+                    elif response.status == 429:
+                        # Quick retry for rate limiting
+                        await asyncio.sleep(1)
+                        async with session.post(url, data=edata, headers=headers) as retry_response:
+                            if retry_response.status == 200:
+                                return await retry_response.text()
+                    return None
+            except (asyncio.TimeoutError, aiohttp.ClientError):
+                return None
+    except Exception as e:
+        print(f"❌ Request error: {e}")
         return None
 
 
@@ -40,13 +54,30 @@ async def send_multiple_requests(uid, server_name, url):
     if tokens is None:
         return None
 
-    tasks = []
-    for i in range(100):
-        token = tokens[i % len(tokens)]["token"]
-        tasks.append(send_request(encrypted_uid, token, url))
-
+    # Send likes with optimized approach for reliability  
+    successful_requests = 0
+    max_concurrent = min(20, len(tokens))  # Limit concurrent requests
+    
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def send_with_semaphore(token):
+        async with semaphore:
+            result = await send_request(encrypted_uid, token, url)
+            if result is not None:
+                return 1
+            return 0
+    
+    # Send requests with controlled concurrency
+    tasks = [send_with_semaphore(tokens[i]["token"]) for i in range(min(len(tokens), 50))]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    return results
+    
+    # Count successful requests
+    for result in results:
+        if not isinstance(result, Exception) and result == 1:
+            successful_requests += 1
+    
+    print(f"✅ Successfully sent {successful_requests} like requests for UID {uid}")
+    return successful_requests
 
 
 def make_request(encrypt, server_name, token):

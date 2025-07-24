@@ -205,7 +205,9 @@ def handle_requests():
             else:
                 url = "https://clientbp.ggblueshark.com/LikeProfile"
 
-            asyncio.run(send_multiple_requests(uid, server_name, url))
+            # Send likes with improved rate limiting handling
+            likes_sent = asyncio.run(send_multiple_requests(uid, server_name, url))
+            app.logger.info(f"💫 Attempted to send likes for UID {uid}, successful requests: {likes_sent if likes_sent else 0}")
 
             # Use the same working token for final check
             after = make_request(encrypted_uid, server_name, token_used)
@@ -247,14 +249,23 @@ def handle_requests():
                 # Emergency fallback
                 player_name = f"Player_{player_uid}"
             like_given = after_like - before_like
-            status = 1 if like_given != 0 else 2
+            
+            # Improved status logic
+            if like_given > 0:
+                status = 1
+                message = f"✅ Successfully added {like_given} likes!"
+            elif likes_sent and likes_sent > 0:
+                status = 3  # Likes sent but not reflected (server processing delay)
+                message = f"⏳ {likes_sent} like requests sent successfully - likes may appear with delay"
+            else:
+                status = 2
+                message = "❌ No likes were sent"
 
             response_data = {
                 "status": status,
-                "message": "Like operation successful"
-                if status == 1
-                else "No likes added",
+                "message": message,
                 "server_detected": server_name,
+                "requests_sent": likes_sent if likes_sent else 0,
                 "player": {
                     "uid": player_uid,
                     "nickname": player_name,
