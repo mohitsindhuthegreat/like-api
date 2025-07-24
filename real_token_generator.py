@@ -127,7 +127,7 @@ class RealTokenGenerator:
             return {}
 
     def clean_nickname(self, nickname: str) -> str:
-        """Clean and make nickname readable with proper Unicode handling"""
+        """Clean and make nickname readable with comprehensive Unicode handling"""
         if not nickname:
             return "Player"
             
@@ -138,22 +138,18 @@ class RealTokenGenerator:
             # Try to normalize Unicode characters first
             normalized = unicodedata.normalize('NFKD', nickname)
             
-            # Define Unicode character mapping for special characters
+            # Comprehensive Unicode character mapping for special characters
             unicode_map = {
                 # Small caps letters
                 '\u1d22': 'R',  # ᴿ
                 '\u1d0f': 'O',  # ᴏ
                 '\u0280': 'R',  # ʀ 
-                '\u1d0f': 'O',  # ᴏ
                 '\u3164': '',   # ㅤ (invisible separator)
                 '\u026a': 'I',  # ɪ
                 '\ua731': 'S',  # ꜱ
                 '\u029f': 'L',  # ʟ
-                '\u026a': 'I',  # ɪ
                 '\u1d20': 'T',  # ᴛ
                 '\u1d07': 'E',  # ᴇ
-                
-                # Additional special characters
                 '\u0299': 'B',  # ʙ
                 '\u029c': 'H',  # ʜ
                 '\u0274': 'N',  # ɴ
@@ -170,6 +166,56 @@ class RealTokenGenerator:
                 '\u1d22': 'W',  # ᴡ
                 '\u028f': 'Y',  # ʏ
                 '\u1d22': 'Z',  # ᴢ
+                
+                # Cherokee characters (commonly used in gaming nicknames)
+                '\u13A0': 'A',  # Ꭰ
+                '\u13A1': 'E',  # Ꭱ (example from your nickname)
+                '\u13A2': 'I',  # Ꭲ
+                '\u13A3': 'O',  # Ꭳ
+                '\u13A4': 'U',  # Ꭴ
+                '\u13A5': 'V',  # Ꭵ
+                '\u13A6': 'GA', # Ꭶ
+                '\u13A7': 'KA', # Ꭷ
+                '\u13A8': 'GE', # Ꭸ
+                '\u13A9': 'GI', # Ꭹ
+                '\u13AA': 'GO', # Ꭺ
+                '\u13AB': 'GU', # Ꭻ
+                '\u13AC': 'GV', # Ꭼ
+                '\u13AD': 'HA', # Ꭽ
+                '\u13AE': 'HE', # Ꭾ (example from your nickname)
+                '\u13AF': 'HI', # Ꭿ
+                '\u13B0': 'HO', # Ꮀ
+                '\u13EB': 'YV', # Ꮟ (example from your nickname)
+                
+                # Extended Latin and special characters
+                '\u00f8': 'o',  # ø (example from your nickname)
+                '\u043d': 'n',  # н (Cyrillic n, example from your nickname)
+                '\u2ca7': 'L',  # Ⲗ (Coptic letter)
+                '\u0fd0': '',   # Tibetan mark (remove)
+                
+                # Mathematical and modifier letters
+                '\u1d2c': 'A',  # ᴬ
+                '\u1d2d': 'AE', # ᴭ
+                '\u1d2e': 'B',  # ᴮ
+                '\u1d2f': 'B',  # ᴯ
+                '\u1d30': 'D',  # ᴰ
+                '\u1d31': 'E',  # ᴱ
+                '\u1d32': 'E',  # ᴲ
+                '\u1d33': 'G',  # ᴳ
+                '\u1d34': 'H',  # ᴴ
+                '\u1d35': 'I',  # ᴵ
+                '\u1d36': 'J',  # ᴶ
+                '\u1d37': 'K',  # ᴷ
+                '\u1d38': 'L',  # ᴸ
+                '\u1d39': 'M',  # ᴹ
+                '\u1d3a': 'N',  # ᴺ
+                '\u1d3c': 'O',  # ᴼ
+                '\u1d3d': 'OU', # ᴽ
+                '\u1d3e': 'P',  # ᴾ
+                '\u1d3f': 'R',  # ᴿ
+                '\u1d40': 'T',  # ᵀ
+                '\u1d41': 'U',  # ᵁ
+                '\u1d42': 'W',  # ᵂ
             }
             
             # Replace Unicode characters with readable equivalents
@@ -177,35 +223,75 @@ class RealTokenGenerator:
             for unicode_char, replacement in unicode_map.items():
                 cleaned = cleaned.replace(unicode_char, replacement)
             
-            # Remove remaining invisible/control characters
-            cleaned = re.sub(r'[\u3164\u200b\u200c\u200d\ufeff]', '', cleaned)
+            # Remove remaining invisible/control characters and special marks
+            cleaned = re.sub(r'[\u3164\u200b\u200c\u200d\ufeff\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff]', '', cleaned)
             
-            # Keep readable characters including Korean, Chinese, Japanese, and other scripts
-            # Remove only control characters and keep most Unicode letters/numbers
+            # Remove control characters and format characters
             cleaned = re.sub(r'[\u0000-\u001f\u007f-\u009f\u2000-\u200f\u2028-\u202f\u205f-\u206f]', '', cleaned)
-            cleaned = cleaned.strip()
             
-            # If result is too short or empty, try to extract any Latin characters
+            # Clean up multiple underscores and spaces
+            cleaned = re.sub(r'[_\s]{2,}', '_', cleaned)
+            cleaned = cleaned.strip('_').strip()
+            
+            # If result is too short, try different approaches
             if len(cleaned) < 2:
-                # Try to extract any ASCII letters/numbers
+                # Try to extract any ASCII letters/numbers first
                 ascii_only = re.sub(r'[^\x20-\x7E]', '', nickname)
                 ascii_only = re.sub(r'[^\w\s\-_]', '', ascii_only).strip()
                 
                 if len(ascii_only) >= 2:
                     return ascii_only
+                
+                # Try transliteration of common Unicode blocks
+                transliterated = ""
+                for char in nickname:
+                    char_code = ord(char)
+                    # Cherokee block
+                    if 0x13A0 <= char_code <= 0x13F5:
+                        transliterated += "Ch"
+                    # Cyrillic block  
+                    elif 0x0400 <= char_code <= 0x04FF:
+                        transliterated += "Cy"
+                    # Greek block
+                    elif 0x0370 <= char_code <= 0x03FF:
+                        transliterated += "Gr"
+                    # Arabic block
+                    elif 0x0600 <= char_code <= 0x06FF:
+                        transliterated += "Ar"
+                    # Keep ASCII and basic Latin
+                    elif 0x0020 <= char_code <= 0x007E:
+                        transliterated += char
+                    # Other characters become X
+                    elif char.isalpha():
+                        transliterated += "X"
+                
+                if len(transliterated) >= 2:
+                    return transliterated[:15]  # Limit length
                 else:
-                    return "FreeFire_Player"
+                    return "FirePlayer"
             
-            return cleaned
+            # Limit final length to reasonable size
+            return cleaned[:20] if len(cleaned) <= 20 else cleaned[:17] + "..."
             
         except Exception as e:
-            # Fallback: extract any readable ASCII characters
+            # Enhanced fallback: try multiple approaches
             try:
+                # First try: ASCII extraction
                 ascii_fallback = re.sub(r'[^\x20-\x7E]', '', nickname)
                 ascii_fallback = re.sub(r'[^\w\s\-_]', '', ascii_fallback).strip()
-                return ascii_fallback if len(ascii_fallback) >= 2 else "FreeFire_Player"
+                
+                if len(ascii_fallback) >= 2:
+                    return ascii_fallback
+                
+                # Second try: character count approach
+                if len(nickname) > 0:
+                    char_count = sum(1 for c in nickname if c.isalpha() or c.isdigit())
+                    if char_count >= 3:
+                        return f"Player_{char_count}chars"
+                
+                return "FirePlayer"
             except:
-                return "FreeFire_Player"
+                return "FirePlayer"
 
     def generate_real_jwt_token(self, uid: str, password: str) -> Optional[Dict]:
         """Generate real JWT token using the complete process"""

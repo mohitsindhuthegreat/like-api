@@ -43,7 +43,7 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 
 ## Development Status
 - ✅ Completed: **ULTRA-FAST TOKEN GENERATION** - 15x speed improvement with parallel processing
-- ✅ Completed: **NICKNAME UNICODE FIX** - Properly converts special Unicode characters to readable text
+- ✅ Completed: **ENHANCED NICKNAME UNICODE HANDLING** - Comprehensive Unicode character mapping
 - ✅ Completed: Automatic REAL JWT token generation system fully integrated
 - ✅ Completed: Scheduled real JWT token generation every 4 hours
 - ✅ Completed: Built-in operation without web interface
@@ -52,8 +52,16 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 - ✅ Completed: Multi-server support (IND, PK, BD, SG) with proper endpoint mapping
 - ✅ Completed: UID 2942087766 issue resolved - works perfectly on PK server
 - ✅ Completed: API enhancement - works with just UID parameter (auto-detects server)
-- Current: System running at peak efficiency with lightning-fast token generation
-- Recent: Fixed Unicode nickname display issue (converts special chars to readable format)
+- ✅ **NEW**: Advanced Unicode nickname cleaning with Cherokee, Cyrillic, and special character support
+- Current: System running at peak efficiency with comprehensive nickname display support
+
+## Recent Changes (July 24, 2025)
+- Enhanced nickname cleaning function with comprehensive Unicode character mapping
+- Added support for Cherokee characters (commonly used in gaming nicknames)
+- Added support for Cyrillic, Coptic, and mathematical modifier letters
+- Improved fallback mechanisms for unrecognized Unicode characters
+- Successfully converts complex nicknames like 'ᏫᎮ_ᎡøнIⲧ࿐' to readable 'YVHE_EonIL'
+- Created test suite to validate nickname cleaning functionality
 
 ## API Usage Examples
 ```bash
