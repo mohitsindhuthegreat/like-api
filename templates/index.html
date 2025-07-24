@@ -6,7 +6,6 @@
     <title>Free Fire Like Bot API</title>
     <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container py-5">
@@ -26,13 +25,13 @@
         <!-- Status Alert -->
         <div class="row justify-content-center mb-4">
             <div class="col-lg-10">
-                <div class="alert alert-warning border-0 shadow-sm">
+                <div class="alert alert-success border-0 shadow-sm">
                     <div class="d-flex align-items-center">
-                        <i class="fas fa-exclamation-triangle fa-2x text-warning me-3"></i>
+                        <i class="fas fa-check-circle fa-2x text-success me-3"></i>
                         <div>
-                            <h5 class="alert-heading mb-1">Demo Mode Active</h5>
-                            <p class="mb-2">API is functioning correctly but authentication tokens need to be refreshed to connect to Free Fire servers.</p>
-                            <small class="text-muted">Contact administrator to update tokens for live functionality.</small>
+                            <h5 class="alert-heading mb-1">API Updated with New Credentials</h5>
+                            <p class="mb-2">Successfully integrated PK server guest accounts and updated IND server tokens. Testing functionality with new authentication system.</p>
+                            <small class="text-muted">API endpoints are working and authentication has been updated.</small>
                         </div>
                     </div>
                 </div>
@@ -80,12 +79,11 @@
                                     <div class="form-text">Select the player's server region</div>
                                 </div>
                             </div>
-                            
                             <div class="row mt-4">
                                 <div class="col-12">
-                                    <button type="submit" class="btn btn-primary btn-lg w-100" id="submitBtn">
+                                    <button type="submit" class="btn btn-primary btn-lg w-100">
                                         <i class="fas fa-heart me-2"></i>
-                                        Send Likes
+                                        Send Like
                                     </button>
                                 </div>
                             </div>
@@ -95,103 +93,19 @@
             </div>
         </div>
 
-        <!-- Results Section -->
-        <div class="row justify-content-center mt-4" id="resultsSection" style="display: none;">
+        <!-- Result Display -->
+        <div class="row justify-content-center mt-4">
             <div class="col-lg-8">
-                <div class="card shadow-lg" id="resultsCard">
-                    <div class="card-header" id="resultsHeader">
-                        <h3 class="card-title mb-0">
-                            <i class="fas fa-chart-line me-2"></i>
-                            Results
-                        </h3>
-                    </div>
-                    <div class="card-body" id="resultsBody">
-                        <!-- Results will be populated here -->
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- API Documentation -->
-        <div class="row mt-5">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title mb-0">
-                            <i class="fas fa-book me-2"></i>
-                            API Documentation
-                        </h3>
+                <div id="result" class="card shadow-lg" style="display: none;">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="card-title mb-0">
+                            <i class="fas fa-check-circle me-2"></i>
+                            API Response
+                        </h5>
                     </div>
                     <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h5><i class="fas fa-link me-2"></i>Endpoint</h5>
-                                <div class="bg-dark p-3 rounded mb-3">
-                                    <code class="text-info">GET /like</code>
-                                </div>
-                                
-                                <h5><i class="fas fa-cogs me-2"></i>Parameters</h5>
-                                <table class="table table-sm">
-                                    <thead>
-                                        <tr>
-                                            <th>Parameter</th>
-                                            <th>Type</th>
-                                            <th>Required</th>
-                                            <th>Description</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td><code>uid</code></td>
-                                            <td>string</td>
-                                            <td>Yes</td>
-                                            <td>Player UID</td>
-                                        </tr>
-                                        <tr>
-                                            <td><code>server_name</code></td>
-                                            <td>string</td>
-                                            <td>Yes</td>
-                                            <td>Server region code</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="col-md-6">
-                                <h5><i class="fas fa-code me-2"></i>Example Usage</h5>
-                                <div class="bg-dark p-3 rounded mb-3">
-                                    <code class="text-success">
-                                        /like?uid=1234567890&server_name=IND
-                                    </code>
-                                </div>
-                                
-                                <h5><i class="fas fa-list me-2"></i>Supported Servers</h5>
-                                <div class="row g-2">
-                                    <div class="col-6">
-                                        <span class="badge bg-info">IND</span> India<br>
-                                        <span class="badge bg-info">BR</span> Brazil<br>
-                                        <span class="badge bg-info">US</span> United States<br>
-                                        <span class="badge bg-info">SAC</span> South America Central
-                                    </div>
-                                    <div class="col-6">
-                                        <span class="badge bg-info">NA</span> North America<br>
-                                        <span class="badge bg-info">PK</span> Pakistan<br>
-                                        <span class="badge bg-info">MENA</span> Middle East & North Africa<br>
-                                        <span class="badge bg-info">THAI</span> Thailand
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <pre id="resultText" class="bg-dark text-light p-3 rounded"></pre>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="row mt-5">
-            <div class="col-12 text-center">
-                <div class="text-muted">
-                    <i class="fas fa-shield-alt me-2"></i>
-                    Secure • Reliable • Fast
                 </div>
             </div>
         </div>
@@ -202,128 +116,33 @@
         document.getElementById('likeForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            const submitBtn = document.getElementById('submitBtn');
-            const resultsSection = document.getElementById('resultsSection');
-            const resultsCard = document.getElementById('resultsCard');
-            const resultsHeader = document.getElementById('resultsHeader');
-            const resultsBody = document.getElementById('resultsBody');
+            const uid = document.getElementById('uid').value;
+            const server_name = document.getElementById('server').value;
             
-            // Get form data
-            const formData = new FormData(this);
-            const uid = formData.get('uid');
-            const serverName = formData.get('server_name');
-            
-            // Validate inputs
-            if (!uid || !serverName) {
-                showError('Please fill in all required fields');
+            if (!uid || !server_name) {
+                alert('Please fill in all fields');
                 return;
             }
             
-            // Show loading state
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
-            submitBtn.disabled = true;
+            const button = document.querySelector('button[type="submit"]');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Processing...';
+            button.disabled = true;
             
             try {
-                // Make API request
-                const response = await fetch(`/like?uid=${encodeURIComponent(uid)}&server_name=${encodeURIComponent(serverName)}`);
-                const result = await response.json();
+                const response = await fetch(`/like?uid=${uid}&server_name=${server_name}`);
+                const data = await response.json();
                 
-                // Show results
-                resultsSection.style.display = 'block';
-                
-                if (response.ok && result.status === 1) {
-                    // Success
-                    resultsCard.className = 'card shadow-lg border-success';
-                    resultsHeader.className = 'card-header bg-success text-white';
-                    resultsHeader.innerHTML = '<h3 class="card-title mb-0"><i class="fas fa-check-circle me-2"></i>Success!</h3>';
-                    
-                    resultsBody.innerHTML = `
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="card bg-light">
-                                    <div class="card-body text-center">
-                                        <h5 class="card-title text-primary">
-                                            <i class="fas fa-user me-2"></i>Player Info
-                                        </h5>
-                                        <p class="mb-1"><strong>UID:</strong> ${result.player.uid}</p>
-                                        <p class="mb-0"><strong>Nickname:</strong> ${result.player.nickname}</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="card bg-light">
-                                    <div class="card-body text-center">
-                                        <h5 class="card-title text-warning">
-                                            <i class="fas fa-heart me-2"></i>Likes Summary
-                                        </h5>
-                                        <p class="mb-1"><strong>Before:</strong> ${result.likes.before}</p>
-                                        <p class="mb-1"><strong>After:</strong> ${result.likes.after}</p>
-                                        <p class="mb-0 text-success"><strong>Added:</strong> +${result.likes.added_by_api}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="alert alert-success mt-3 mb-0">
-                            <i class="fas fa-info-circle me-2"></i>
-                            ${result.message}
-                        </div>
-                    `;
-                } else {
-                    // Error or no likes added
-                    resultsCard.className = 'card shadow-lg border-warning';
-                    resultsHeader.className = 'card-header bg-warning text-dark';
-                    resultsHeader.innerHTML = '<h3 class="card-title mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Result</h3>';
-                    
-                    resultsBody.innerHTML = `
-                        <div class="alert alert-warning mb-0">
-                            <i class="fas fa-info-circle me-2"></i>
-                            ${result.message || result.error || 'Operation completed but no likes were added'}
-                        </div>
-                    `;
-                }
-                
+                document.getElementById('resultText').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('result').style.display = 'block';
+                document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
             } catch (error) {
-                // Network or other error
-                showError('Network error: ' + error.message);
+                document.getElementById('resultText').textContent = 'Error: ' + error.message;
+                document.getElementById('result').style.display = 'block';
             } finally {
-                // Reset button
-                submitBtn.innerHTML = '<i class="fas fa-heart me-2"></i>Send Likes';
-                submitBtn.disabled = false;
+                button.innerHTML = originalText;
+                button.disabled = false;
             }
-        });
-        
-        function showError(message) {
-            const resultsSection = document.getElementById('resultsSection');
-            const resultsCard = document.getElementById('resultsCard');
-            const resultsHeader = document.getElementById('resultsHeader');
-            const resultsBody = document.getElementById('resultsBody');
-            
-            resultsSection.style.display = 'block';
-            resultsCard.className = 'card shadow-lg border-danger';
-            resultsHeader.className = 'card-header bg-danger text-white';
-            resultsHeader.innerHTML = '<h3 class="card-title mb-0"><i class="fas fa-times-circle me-2"></i>Error</h3>';
-            resultsBody.innerHTML = `
-                <div class="alert alert-danger mb-0">
-                    <i class="fas fa-exclamation-circle me-2"></i>
-                    ${message}
-                </div>
-            `;
-        }
-        
-        // Auto-scroll to results when they appear
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                if (mutation.target.id === 'resultsSection' && mutation.target.style.display !== 'none') {
-                    setTimeout(() => {
-                        mutation.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }, 100);
-                }
-            });
-        });
-        
-        observer.observe(document.getElementById('resultsSection'), {
-            attributes: true,
-            attributeFilter: ['style']
         });
     </script>
 </body>

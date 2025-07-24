@@ -2,13 +2,13 @@ from flask import Flask, request, jsonify, Response, render_template
 import asyncio
 import json
 from google.protobuf.json_format import MessageToJson
-from app.utils import load_tokens
+from app.utils import load_tokens, get_server_url
 from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def index():
     """Render the main interface for testing the API"""
     return render_template("index.html")
@@ -26,7 +26,15 @@ def handle_requests():
             if tokens is None:
                 raise Exception(f"No tokens available for server: {server_name}")
             
-            token = tokens[0]["token"]
+            # Handle both JWT tokens and guest account credentials
+            if "guest_uid" in tokens[0]:
+                # Guest account authentication (for PK server)
+                guest_creds = tokens[0]
+                token = guest_creds["token"]
+            else:
+                # JWT token authentication (for IND server)
+                token = tokens[0]["token"]
+            
             encrypted_uid = enc(uid)
             if encrypted_uid is None:
                 raise Exception("Failed to encrypt UID")
@@ -47,20 +55,14 @@ def handle_requests():
                         "after": 0,
                         "added_by_api": 0,
                     },
-                    "note": "To fix this: Update authentication tokens in tokens/ind.json with valid Free Fire API tokens"
+                    "note": f"To fix this: Update authentication tokens in tokens/{server_name.lower()}.json with valid Free Fire API tokens"
                 }
 
             data_before = json.loads(MessageToJson(before))
             before_like = int(data_before.get("AccountInfo", {}).get("Likes", 0))
 
-            if server_name == "IND":
-                url = "https://client.ind.freefiremobile.com/LikeProfile"
-            elif server_name in {"BR", "US", "SAC", "NA"}:
-                url = "https://client.us.freefiremobile.com/LikeProfile"
-            elif server_name == "PK":
-                url = "https://clientbp.ggblueshark.com/LikeProfile"
-            else:
-                url = "https://clientbp.ggblueshark.com/LikeProfile"
+            base_url = get_server_url(server_name)
+            url = f"{base_url}/LikeProfile"
 
             asyncio.run(send_multiple_requests(uid, server_name, url))
 
@@ -133,4 +135,4 @@ def api_status():
     return jsonify(status)
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True)

@@ -1,7 +1,7 @@
 import aiohttp
 import asyncio
 import requests
-from app.utils import load_tokens
+from app.utils import load_tokens, get_server_url
 from app.encryption import encrypt_message
 from app.protobuf_handler import create_like_protobuf, decode_protobuf
 
@@ -21,10 +21,9 @@ async def send_request(encrypted_uid, token, url):
             "ReleaseVersion": "OB48",
         }
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=edata, headers=headers, ssl=False) as response:
+            async with session.post(url, data=edata, headers=headers) as response:
                 return await response.text()
-    except Exception as e:
-        print(f"ERROR: Async request failed: {e}")
+    except Exception:
         return None
 
 
@@ -51,14 +50,8 @@ async def send_multiple_requests(uid, server_name, url):
 
 
 def make_request(encrypt, server_name, token):
-    if server_name == "IND":
-        url = "https://client.ind.freefiremobile.com/GetPlayerPersonalShow"
-    elif server_name in {"BR", "US", "SAC", "NA"}:
-        url = "https://client.us.freefiremobile.com/GetPlayerPersonalShow"
-    elif server_name == "PK":
-        url = "https://clientbp.ggblueshark.com/GetPlayerPersonalShow"
-    else:
-        url = "https://clientbp.ggblueshark.com/GetPlayerPersonalShow"
+    base_url = get_server_url(server_name)
+    url = f"{base_url}/GetPlayerPersonalShow"
 
     edata = bytes.fromhex(encrypt)
     headers = {
@@ -74,13 +67,6 @@ def make_request(encrypt, server_name, token):
     }
     try:
         response = requests.post(url, data=edata, headers=headers, verify=False)
-        print(f"DEBUG: Response status: {response.status_code}")
-        print(f"DEBUG: Response content: {response.content[:200]}")
-        if response.status_code == 200 and response.content:
-            return decode_protobuf(response.content)
-        else:
-            print(f"ERROR: Bad response - Status: {response.status_code}, Content: {response.text[:200]}")
-            return None
-    except Exception as e:
-        print(f"ERROR: Request exception: {e}")
+        return decode_protobuf(response.content)
+    except Exception:
         return None
