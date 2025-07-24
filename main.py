@@ -25,12 +25,27 @@ def handle_requests():
             tokens = load_tokens(server_name)
             if tokens is None:
                 raise Exception("Failed to load tokens.")
-            token = tokens[0]["token"]
-            encrypted_uid = enc(uid)
-
-            before = make_request(encrypted_uid, server_name, token)
+            
+            # Try multiple tokens if first one fails
+            token_used = None
+            before = None
+            
+            for i, token_data in enumerate(tokens[:5]):  # Try first 5 tokens
+                token = token_data["token"]
+                encrypted_uid = enc(uid)
+                
+                app.logger.info(f"Trying token {i+1}/5 for UID {uid}")
+                before = make_request(encrypted_uid, server_name, token)
+                
+                if before is not None:
+                    token_used = token
+                    app.logger.info(f"Successfully got player info with token {i+1}")
+                    break
+                else:
+                    app.logger.warning(f"Token {i+1} failed for UID {uid}")
+            
             if before is None:
-                raise Exception("Failed to retrieve initial player info.")
+                raise Exception(f"Failed to retrieve initial player info with {min(5, len(tokens))} tokens. Server: {server_name}, UID: {uid}")
 
             data_before = json.loads(MessageToJson(before))
             before_like = int(data_before.get("AccountInfo", {}).get("Likes", 0))
@@ -44,7 +59,8 @@ def handle_requests():
 
             asyncio.run(send_multiple_requests(uid, server_name, url))
 
-            after = make_request(encrypted_uid, server_name, token)
+            # Use the same working token for final check
+            after = make_request(encrypted_uid, server_name, token_used)
             if after is None:
                 raise Exception("Failed to retrieve player info after like requests.")
 

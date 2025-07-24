@@ -70,7 +70,18 @@ def make_request(encrypt, server_name, token):
         "ReleaseVersion": "OB49",
     }
     try:
-        response = requests.post(url, data=edata, headers=headers, verify=False)
-        return decode_protobuf(response.content)
-    except Exception:
+        response = requests.post(url, data=edata, headers=headers, verify=False, timeout=15)
+        
+        if response.status_code != 200:
+            print(f"Request failed with status {response.status_code} for server {server_name}")
+            return None
+            
+        result = decode_protobuf(response.content)
+        if result is None:
+            print(f"Failed to decode protobuf response for server {server_name}")
+            
+        return result
+        
+    except Exception as e:
+        print(f"Exception in make_request for server {server_name}: {str(e)}")
         return None
