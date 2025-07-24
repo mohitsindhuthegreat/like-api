@@ -248,13 +248,7 @@ class RealTokenGenerator:
                         clean_nickname = self.clean_nickname(raw_nickname)
                         
                         return {
-                            "uid": uid,
-                            "status": response_dict.get("status", "N/A"),
-                            "token": jwt_token,
-                            "nickname": clean_nickname,
-                            "account_id": payload.get("account_id", ""),
-                            "region": payload.get("noti_region", ""),
-                            "generated_at": datetime.now().isoformat()
+                            "token": jwt_token
                         }
                     else:
                         logger.warning(f"Invalid JWT response for UID {uid}")

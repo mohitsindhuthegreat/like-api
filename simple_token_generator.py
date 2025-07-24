@@ -59,11 +59,7 @@ class SimpleTokenGenerator:
             token_json = res.json()
             if "access_token" in token_json and "open_id" in token_json:
                 return {
-                    "uid": uid,
-                    "status": "success",
-                    "token": token_json["access_token"],
-                    "open_id": token_json["open_id"],
-                    "generated_at": datetime.now().isoformat()
+                    "token": token_json["access_token"]
                 }
             else:
                 logger.warning(f"Invalid token response for UID {uid}")

@@ -177,10 +177,7 @@ class TokenGenerator:
                     
                     if response_dict.get("status") and response_dict.get("token"):
                         return {
-                            "uid": uid,
-                            "status": response_dict.get("status", "N/A"),
-                            "token": response_dict.get("token", "N/A"),
-                            "generated_at": datetime.now().isoformat()
+                            "token": response_dict.get("token", "N/A")
                         }
                     else:
                         logger.warning(f"Invalid JWT response for UID {uid}")
