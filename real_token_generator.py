@@ -82,6 +82,50 @@ class RealTokenGenerator:
                 response_dict[key.strip()] = value.strip().strip('"')
         return response_dict
 
+    def decode_jwt_payload(self, token: str) -> Dict:
+        """Decode JWT token payload to extract readable nickname"""
+        try:
+            import base64
+            import json
+            
+            # Split JWT token (header.payload.signature)
+            parts = token.split('.')
+            if len(parts) != 3:
+                return {}
+                
+            # Decode payload (base64url)
+            payload = parts[1]
+            # Add padding if needed
+            payload += '=' * (4 - len(payload) % 4)
+            
+            # Decode base64
+            decoded_bytes = base64.urlsafe_b64decode(payload)
+            payload_data = json.loads(decoded_bytes.decode('utf-8'))
+            
+            return payload_data
+            
+        except Exception:
+            return {}
+
+    def clean_nickname(self, nickname: str) -> str:
+        """Clean and make nickname readable"""
+        if not nickname:
+            return "Player"
+            
+        # Remove special Unicode characters and make readable
+        import re
+        
+        # Replace common encoded characters with readable text
+        cleaned = nickname.replace('CHÃ—FF~', 'FF_')
+        cleaned = re.sub(r'[^\w\s\-_]', '', cleaned)  # Remove special chars
+        cleaned = cleaned.strip()
+        
+        # If still empty or too short, use a default
+        if len(cleaned) < 2:
+            return "FreeFire_Player"
+            
+        return cleaned
+
     def generate_real_jwt_token(self, uid: str, password: str) -> Optional[Dict]:
         """Generate real JWT token using the complete process"""
         try:
@@ -173,10 +217,20 @@ class RealTokenGenerator:
                     response_dict = self.parse_response(str(example_msg))
                     
                     if response_dict.get("status") and response_dict.get("token"):
+                        jwt_token = response_dict.get("token", "N/A")
+                        
+                        # Decode JWT to get nickname
+                        payload = self.decode_jwt_payload(jwt_token)
+                        raw_nickname = payload.get("nickname", "")
+                        clean_nickname = self.clean_nickname(raw_nickname)
+                        
                         return {
                             "uid": uid,
                             "status": response_dict.get("status", "N/A"),
-                            "token": response_dict.get("token", "N/A"),
+                            "token": jwt_token,
+                            "nickname": clean_nickname,
+                            "account_id": payload.get("account_id", ""),
+                            "region": payload.get("noti_region", ""),
                             "generated_at": datetime.now().isoformat()
                         }
                     else:

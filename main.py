@@ -93,6 +93,45 @@ def status():
         "regions": ["India (IND)", "Pakistan (PK)"]
     })
 
+@app.route('/tokens')
+def view_tokens():
+    """View generated tokens with clean nicknames"""
+    try:
+        region = request.args.get("region", "").upper()
+        
+        tokens_data = {}
+        
+        if region == "IND" or not region:
+            try:
+                with open("tokens/ind.json", 'r') as f:
+                    ind_tokens = json.load(f)
+                    tokens_data["india"] = {
+                        "total": len(ind_tokens),
+                        "tokens": ind_tokens[:10] if len(ind_tokens) > 10 else ind_tokens  # Show first 10
+                    }
+            except:
+                tokens_data["india"] = {"total": 0, "tokens": []}
+        
+        if region == "PK" or not region:
+            try:
+                with open("tokens/pk.json", 'r') as f:
+                    pk_tokens = json.load(f)
+                    tokens_data["pakistan"] = {
+                        "total": len(pk_tokens),
+                        "tokens": pk_tokens[:10] if len(pk_tokens) > 10 else pk_tokens  # Show first 10
+                    }
+            except:
+                tokens_data["pakistan"] = {"total": 0, "tokens": []}
+        
+        return jsonify({
+            "status": "success",
+            "message": "Generated tokens with clean nicknames",
+            "data": tokens_data
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # Initialize token generation when app starts
 def initialize_token_generator():
