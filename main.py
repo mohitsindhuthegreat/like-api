@@ -19,15 +19,8 @@ from nickname_processor import nickname_processor
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
 
-# Configure database first - CUSTOM NEON DATABASE
-custom_database_url = "postgresql://neondb_owner:npg_2wvRQWkasIr9@ep-old-king-a1qaotvu-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-os.environ["DATABASE_URL"] = custom_database_url
-os.environ["PGDATABASE"] = "neondb"
-os.environ["PGHOST"] = "ep-old-king-a1qaotvu-pooler.ap-southeast-1.aws.neon.tech"
-os.environ["PGUSER"] = "neondb_owner"
-os.environ["PGPASSWORD"] = "npg_2wvRQWkasIr9"
-os.environ["PGPORT"] = "5432"
-app.config["SQLALCHEMY_DATABASE_URI"] = custom_database_url
+# Use Replit's PostgreSQL database
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
@@ -73,7 +66,7 @@ if DATABASE_AVAILABLE:
         db.init_app(app)
         with app.app_context():
             db.create_all()
-        print("✅ Using custom Neon database for data storage")
+        print("✅ Using PostgreSQL database for data storage")
     except Exception as e:
         print(f"❌ Database setup error: {e}")
         DATABASE_AVAILABLE = False
@@ -82,30 +75,31 @@ if DATABASE_AVAILABLE:
 player_records = {}
 
 def save_player_record(uid, nickname, server_name, likes_count):
-    """Save player record to custom Neon database"""
+    """Save player record to PostgreSQL database with proper app context"""
     try:
         if DATABASE_AVAILABLE:
-            # Check if record exists
-            existing_record = PlayerRecord.query.filter_by(uid=uid, server_name=server_name).first()
-            
-            if existing_record:
-                # Update existing record
-                existing_record.nickname = nickname
-                existing_record.likes_count = likes_count
-                existing_record.last_updated = datetime.utcnow()
-            else:
-                # Create new record
-                new_record = PlayerRecord(
-                    uid=uid,
-                    nickname=nickname,
-                    server_name=server_name,
-                    likes_count=likes_count
-                )
-                db.session.add(new_record)
-            
-            db.session.commit()
-            app.logger.info(f"📝 Custom Neon DB: UID {uid}: {nickname}")
-            return True
+            with app.app_context():
+                # Check if record exists
+                existing_record = PlayerRecord.query.filter_by(uid=uid, server_name=server_name).first()
+                
+                if existing_record:
+                    # Update existing record
+                    existing_record.nickname = nickname
+                    existing_record.likes_count = likes_count
+                    existing_record.last_updated = datetime.utcnow()
+                else:
+                    # Create new record
+                    new_record = PlayerRecord(
+                        uid=uid,
+                        nickname=nickname,
+                        server_name=server_name,
+                        likes_count=likes_count
+                    )
+                    db.session.add(new_record)
+                
+                db.session.commit()
+                app.logger.info(f"📝 PostgreSQL DB: UID {uid}: {nickname}")
+                return True
         else:
             # Fallback to internal storage
             player_records[f"{uid}_{server_name}"] = {
