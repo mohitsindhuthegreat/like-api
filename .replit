@@ -44,3 +44,6 @@ args = "uv add protobuf pycryptodome aiohttp requests"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[agent]
+integrations = ["python_database==1.0.0"]

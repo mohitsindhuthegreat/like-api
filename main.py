@@ -9,7 +9,7 @@ from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
 from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now, generate_single_token
 try:
-    from models import db, PlayerRecord
+    from models import db, PlayerRecord, TokenRecord
     DATABASE_AVAILABLE = True
 except ImportError as e:
     print(f"⚠️ Database models not available: {e}")
@@ -18,6 +18,16 @@ from nickname_processor import nickname_processor
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
+
+# Configure database first
+custom_database_url = "postgresql://neondb_owner:npg_2wvRQWkasIr9@ep-old-king-a1qaotvu-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+os.environ["DATABASE_URL"] = custom_database_url
+app.config["SQLALCHEMY_DATABASE_URI"] = custom_database_url
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 # Configure Flask to properly handle Unicode in JSON responses - ENHANCED
 app.config['JSON_AS_ASCII'] = False
@@ -52,44 +62,85 @@ def unicode_jsonify(data, status_code=200):
     )
     return response
 
-# DISABLE EXTERNAL DATABASE - Keep everything internal
-DATABASE_AVAILABLE = False
-database_url = None
-print("✅ Internal bot storage only - no external database")
+# Initialize database with Flask app
+if DATABASE_AVAILABLE:
+    try:
+        db.init_app(app)
+        with app.app_context():
+            db.create_all()
+        print("✅ Using custom Neon database for data storage")
+    except Exception as e:
+        print(f"❌ Database setup error: {e}")
+        DATABASE_AVAILABLE = False
 
 # Internal storage for player records - NO EXTERNAL DATABASE
 player_records = {}
 
 def save_player_record(uid, nickname, server_name, likes_count):
-    """Save player record internally in bot"""
+    """Save player record to custom Neon database"""
     try:
-        player_records[f"{uid}_{server_name}"] = {
-            "uid": uid,
-            "nickname": nickname,
-            "server_name": server_name,
-            "likes_count": likes_count,
-            "last_updated": datetime.utcnow().isoformat()
-        }
-        app.logger.info(f"📝 Internal storage: UID {uid}: {nickname}")
-        return True
+        if DATABASE_AVAILABLE:
+            # Check if record exists
+            existing_record = PlayerRecord.query.filter_by(uid=uid, server_name=server_name).first()
+            
+            if existing_record:
+                # Update existing record
+                existing_record.nickname = nickname
+                existing_record.likes_count = likes_count
+                existing_record.last_updated = datetime.utcnow()
+            else:
+                # Create new record
+                new_record = PlayerRecord(
+                    uid=uid,
+                    nickname=nickname,
+                    server_name=server_name,
+                    likes_count=likes_count
+                )
+                db.session.add(new_record)
+            
+            db.session.commit()
+            app.logger.info(f"📝 Custom Neon DB: UID {uid}: {nickname}")
+            return True
+        else:
+            # Fallback to internal storage
+            player_records[f"{uid}_{server_name}"] = {
+                "uid": uid,
+                "nickname": nickname,
+                "server_name": server_name,
+                "likes_count": likes_count,
+                "last_updated": datetime.utcnow().isoformat()
+            }
+            app.logger.info(f"📝 Internal storage: UID {uid}: {nickname}")
+            return True
     except Exception as e:
-        app.logger.error(f"❌ Internal storage error for UID {uid}: {e}")
+        app.logger.error(f"❌ Database error for UID {uid}: {e}")
         return False
 
 
 @app.route("/records", methods=["GET"])
 def get_records():
-    """Get all player records from internal storage"""
+    """Get all player records from custom Neon database"""
     try:
-        records_list = list(player_records.values())
-        # Sort by last_updated descending
-        records_list.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
-        return unicode_jsonify({
-            "total_records": len(records_list),
-            "records": records_list[:100],  # Limit to 100 recent records
-            "message": "Internal bot storage"
-        })
+        if DATABASE_AVAILABLE:
+            # Get records from custom Neon database
+            records = PlayerRecord.query.order_by(PlayerRecord.last_updated.desc()).limit(100).all()
+            records_list = [record.to_dict() for record in records]
+            return unicode_jsonify({
+                "total_records": len(records_list),
+                "records": records_list,
+                "message": "Custom Neon Database Storage"
+            })
+        else:
+            # Fallback to internal storage
+            records_list = list(player_records.values())
+            records_list.sort(key=lambda x: x.get('last_updated', ''), reverse=True)
+            return unicode_jsonify({
+                "total_records": len(records_list),
+                "records": records_list[:100],
+                "message": "Internal bot storage"
+            })
     except Exception as e:
+        app.logger.error(f"Database query error: {e}")
         return unicode_jsonify({"error": str(e)}, 500)
 
 @app.route("/generate_token", methods=["POST", "GET"])
