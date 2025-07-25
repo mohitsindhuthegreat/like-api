@@ -19,9 +19,14 @@ from nickname_processor import nickname_processor
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
 
-# Configure database first
+# Configure database first - CUSTOM NEON DATABASE
 custom_database_url = "postgresql://neondb_owner:npg_2wvRQWkasIr9@ep-old-king-a1qaotvu-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 os.environ["DATABASE_URL"] = custom_database_url
+os.environ["PGDATABASE"] = "neondb"
+os.environ["PGHOST"] = "ep-old-king-a1qaotvu-pooler.ap-southeast-1.aws.neon.tech"
+os.environ["PGUSER"] = "neondb_owner"
+os.environ["PGPASSWORD"] = "npg_2wvRQWkasIr9"
+os.environ["PGPORT"] = "5432"
 app.config["SQLALCHEMY_DATABASE_URI"] = custom_database_url
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
@@ -380,12 +385,41 @@ def status():
 
 @app.route('/tokens')
 def view_tokens():
-    """View generated tokens with clean nicknames"""
+    """View generated tokens from custom Neon database and files"""
     try:
         region = request.args.get("region", "").upper()
-        
         tokens_data = {}
         
+        # Try to get tokens from database first (CUSTOM NEON DATABASE)
+        if DATABASE_AVAILABLE:
+            try:
+                with app.app_context():
+                    if region == "IND" or not region:
+                        ind_tokens = TokenRecord.query.filter_by(server_name='IND', is_active=True).limit(10).all()
+                        tokens_data["india"] = {
+                            "total": TokenRecord.query.filter_by(server_name='IND', is_active=True).count(),
+                            "tokens": [{"token": t.token, "uid": t.uid, "generated_at": t.generated_at.isoformat()} for t in ind_tokens]
+                        }
+                    
+                    if region == "PK" or not region:
+                        pk_tokens = TokenRecord.query.filter_by(server_name='PK', is_active=True).limit(10).all()
+                        tokens_data["pakistan"] = {
+                            "total": TokenRecord.query.filter_by(server_name='PK', is_active=True).count(),
+                            "tokens": [{"token": t.token, "uid": t.uid, "generated_at": t.generated_at.isoformat()} for t in pk_tokens]
+                        }
+                        
+                    if tokens_data:
+                        app.logger.info(f"✅ Retrieved tokens from custom Neon database: {tokens_data.get('india', {}).get('total', 0)} IND + {tokens_data.get('pakistan', {}).get('total', 0)} PK")
+                        return unicode_jsonify({
+                            "status": "success",
+                            "message": f"Retrieved from custom Neon database",
+                            "source": "database",
+                            "data": tokens_data
+                        })
+            except Exception as db_error:
+                app.logger.warning(f"Database token retrieval failed, falling back to files: {str(db_error)}")
+        
+        # Fallback to file-based tokens if database is empty or failed
         if region == "IND" or not region:
             try:
                 with open("tokens/ind.json", 'r') as f:
@@ -410,12 +444,13 @@ def view_tokens():
         
         return unicode_jsonify({
             "status": "success",
-            "message": "Generated tokens with clean nicknames",
+            "message": "Retrieved tokens from files (database unavailable)",
+            "source": "files",
             "data": tokens_data
         })
         
     except Exception as e:
-        return unicode_jsonify({"error": str(e)}, 500)
+        return unicode_jsonify({"error": f"Failed to retrieve tokens: {str(e)}"}, 500)
 
 
 # Initialize token generation when app starts

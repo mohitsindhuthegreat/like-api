@@ -503,7 +503,7 @@ class RealTokenGenerator:
             return []
 
     def save_tokens(self, tokens: List[Dict], file_path: str) -> bool:
-        """Save tokens to JSON file - this replaces old tokens automatically"""
+        """Save tokens to JSON file AND database - this replaces old tokens automatically"""
         try:
             # First, remove old tokens file if it exists
             if os.path.exists(file_path):
@@ -519,10 +519,55 @@ class RealTokenGenerator:
             with open(file_path, 'w') as f:
                 json.dump(tokens, f, indent=2)
             logger.info(f"💾 Saved {len(tokens)} fresh tokens to {file_path}")
+            
+            # Also save to database if available
+            try:
+                self.save_tokens_to_database(tokens, file_path)
+            except Exception as db_error:
+                logger.warning(f"Failed to save tokens to database: {str(db_error)}")
+            
             return True
         except Exception as e:
             logger.error(f"Error saving tokens to {file_path}: {str(e)}")
             return False
+    
+    def save_tokens_to_database(self, tokens: List[Dict], file_path: str):
+        """Save tokens to the custom Neon database"""
+        try:
+            # Import here to avoid circular imports
+            from models import db, TokenRecord
+            from main import app
+            
+            # Determine server name from file path
+            server_name = "IND" if "ind.json" in file_path else "PK"
+            
+            with app.app_context():
+                # Remove old tokens for this server
+                TokenRecord.query.filter_by(server_name=server_name).delete()
+                
+                # Add new tokens
+                for token_data in tokens:
+                    try:
+                        # Extract UID from token if possible
+                        uid = token_data.get('uid', 'unknown')
+                        token_str = token_data.get('token', '')
+                        
+                        new_token = TokenRecord(
+                            uid=uid,
+                            server_name=server_name,
+                            token=token_str,
+                            is_active=True
+                        )
+                        db.session.add(new_token)
+                    except Exception as token_error:
+                        logger.warning(f"Failed to save individual token: {token_error}")
+                        continue
+                
+                db.session.commit()
+                logger.info(f"✅ Saved {len(tokens)} tokens to database for {server_name} server")
+                
+        except Exception as e:
+            logger.error(f"Database token save error: {str(e)}")
 
     def process_single_account(self, account_data):
         """Process a single account for token generation with rate limiting"""
