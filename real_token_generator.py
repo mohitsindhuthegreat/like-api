@@ -477,11 +477,18 @@ class RealTokenGenerator:
             return None
 
     def validate_account_data(self, account: Dict) -> bool:
-        """Validate account UID and password format"""
+        """Validate account UID and password format - supports both nested and simple formats"""
         try:
-            guest_info = account.get("guest_account_info", {})
-            uid = guest_info.get("com.garena.msdk.guest_uid", "")
-            password = guest_info.get("com.garena.msdk.guest_password", "")
+            # Handle both nested guest_account_info format and simple uid/password format
+            if "guest_account_info" in account:
+                # Nested format: {"guest_account_info": {"com.garena.msdk.guest_uid": "...", "com.garena.msdk.guest_password": "..."}}
+                guest_info = account.get("guest_account_info", {})
+                uid = guest_info.get("com.garena.msdk.guest_uid", "")
+                password = guest_info.get("com.garena.msdk.guest_password", "")
+            else:
+                # Simple format: {"uid": "...", "password": "..."}
+                uid = str(account.get("uid", ""))
+                password = account.get("password", "")
             
             # Validate UID format (should be 10 digits)
             if not uid or not uid.isdigit() or len(uid) != 10:
@@ -633,19 +640,30 @@ class RealTokenGenerator:
             try:
                 # Double-check validation before processing
                 if not self.validate_account_data(account):
-                    guest_info = account.get('guest_account_info', {})
-                    uid = guest_info.get('com.garena.msdk.guest_uid', 'unknown')
+                    # Handle both formats for error logging
+                    if "guest_account_info" in account:
+                        guest_info = account.get('guest_account_info', {})
+                        uid = guest_info.get('com.garena.msdk.guest_uid', 'unknown')
+                    else:
+                        uid = str(account.get('uid', 'unknown'))
                     logger.warning(f"❌ Skipping invalid account at position {i}: UID {uid}")
                     return None
                 
-                guest_info = account.get('guest_account_info', {})
-                uid = guest_info.get('com.garena.msdk.guest_uid')
-                password = guest_info.get('com.garena.msdk.guest_password')
+                # Extract UID and password based on format
+                if "guest_account_info" in account:
+                    # Nested format
+                    guest_info = account.get('guest_account_info', {})
+                    uid = guest_info.get('com.garena.msdk.guest_uid')
+                    password = guest_info.get('com.garena.msdk.guest_password')
+                else:
+                    # Simple format
+                    uid = str(account.get('uid'))
+                    password = account.get('password')
 
                 logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
                 
                 # Add small delay before each request to further avoid rate limiting
-                time.sleep(0.25)  # Increased delay slightly
+                time.sleep(0.4)  # Increased delay for better rate limiting
                 
                 token_result = self.generate_real_jwt_token(uid, password)
                 
@@ -681,16 +699,16 @@ class RealTokenGenerator:
             for i, account in enumerate(accounts)
         ]
         
-        # Use ThreadPoolExecutor with aggressive rate limiting to avoid HTTP 429 errors
-        max_workers = min(4, total_accounts)  # Reduced to 4 to completely avoid rate limiting
+        # Use ThreadPoolExecutor with ultra-aggressive rate limiting to avoid HTTP 429 errors
+        max_workers = min(3, total_accounts)  # Reduced to 3 for better rate control
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit tasks with delays to avoid overwhelming the API
             future_to_account = {}
             for i, account_data in enumerate(account_data_list):
                 # Add small delay between submissions to spread out the load
-                if i > 0 and i % 4 == 0:  # Every 4 submissions, wait
-                    time.sleep(0.5)
+                if i > 0 and i % 3 == 0:  # Every 3 submissions, wait longer
+                    time.sleep(0.8)
                 future = executor.submit(self.process_single_account, account_data)
                 future_to_account[future] = account_data
             
