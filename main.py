@@ -7,7 +7,7 @@ from google.protobuf.json_format import MessageToJson
 from app.utils import load_tokens
 from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
-from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now
+from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now, generate_single_token
 try:
     from models import db, PlayerRecord
     DATABASE_AVAILABLE = True
@@ -91,6 +91,61 @@ def get_records():
         })
     except Exception as e:
         return unicode_jsonify({"error": str(e)}, 500)
+
+@app.route("/generate_token", methods=["POST", "GET"])
+def manual_token_generation():
+    """Manual token generation endpoint for testing"""
+    if request.method == "GET":
+        # Show simple form for testing
+        return """
+        <html>
+        <head><title>Manual Token Generation</title></head>
+        <body style="font-family: Arial; padding: 20px;">
+            <h2>Manual JWT Token Generation</h2>
+            <form method="POST">
+                <p><label>UID (10 digits):</label><br>
+                <input type="text" name="uid" placeholder="4059499797" style="width: 200px; padding: 5px;"></p>
+                
+                <p><label>Password (64 char hex):</label><br> 
+                <input type="text" name="password" placeholder="90692811391BDC1BCAB416B78DB4293300A797E38CA8A3FD4526E538FECFAC39" style="width: 500px; padding: 5px;"></p>
+                
+                <p><input type="submit" value="Generate Token" style="padding: 10px 20px; background: #007cba; color: white; border: none;"></p>
+            </form>
+        </body>
+        </html>
+        """
+    
+    # Handle POST request
+    uid = request.form.get("uid") or request.json.get("uid") if request.is_json else None
+    password = request.form.get("password") or request.json.get("password") if request.is_json else None
+    
+    if not uid or not password:
+        return unicode_jsonify({"error": "UID and password are required"}, 400)
+    
+    try:
+        app.logger.info(f"Manual token generation requested for UID: {uid}")
+        token_result = generate_single_token(uid, password)
+        
+        if token_result:
+            return unicode_jsonify({
+                "success": True,
+                "uid": uid,
+                "token": token_result["token"],
+                "message": "JWT token generated successfully"
+            })
+        else:
+            return unicode_jsonify({
+                "success": False,
+                "uid": uid,
+                "error": "Failed to generate token - check UID/password format and validity"
+            }, 400)
+            
+    except Exception as e:
+        app.logger.error(f"Manual token generation error: {str(e)}")
+        return unicode_jsonify({
+            "success": False,
+            "error": f"Generation failed: {str(e)}"
+        }, 500)
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor

@@ -47,8 +47,37 @@ class RealTokenGenerator:
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
         
-    def get_token(self, password: str, uid: str, retry_count: int = 2) -> Optional[Dict]:
-        """Get initial access token with retry logic"""
+    def validate_uid_password_format(self, uid: str, password: str) -> bool:
+        """Validate UID and password format before processing"""
+        try:
+            # UID should be 10 digits
+            if not uid.isdigit() or len(uid) != 10:
+                logger.warning(f"Invalid UID format: {uid} (should be 10 digits)")
+                return False
+                
+            # Password should be 64 character hex string
+            if len(password) != 64:
+                logger.warning(f"Invalid password length: {len(password)} (should be 64)")
+                return False
+                
+            # Check if password is valid hex
+            try:
+                int(password, 16)
+            except ValueError:
+                logger.warning(f"Invalid password format: not a valid hex string")
+                return False
+                
+            return True
+        except Exception as e:
+            logger.error(f"Format validation error: {e}")
+            return False
+
+    def get_token(self, password: str, uid: str, retry_count: int = 3) -> Optional[Dict]:
+        """Get initial access token with enhanced validation and retry logic"""
+        # Validate format first
+        if not self.validate_uid_password_format(uid, password):
+            return None
+            
         for attempt in range(retry_count + 1):
             try:
                 url = "https://ffmconnect.live.gop.garenanow.com/oauth/guest/token/grant"
@@ -57,32 +86,51 @@ class RealTokenGenerator:
                     "User-Agent": "GarenaMSDK/4.0.19P4(G011A ;Android 9;en;US;)",
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Accept-Encoding": "gzip, deflate, br",
-                    "Connection": "close"
+                    "Connection": "keep-alive"
                 }
                 data = {
-                    "uid": uid,
-                    "password": password,
+                    "uid": str(uid).strip(),
+                    "password": password.strip(),
                     "response_type": "token",
                     "client_type": "2",
                     "client_secret": "2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3",
                     "client_id": "100067"
                 }
                 
-                res = self.session.post(url, headers=headers, data=data, timeout=8)
+                res = self.session.post(url, headers=headers, data=data, timeout=10)
+                
                 if res.status_code == 200:
-                    token_json = res.json()
-                    if "access_token" in token_json and "open_id" in token_json:
-                        return token_json
+                    try:
+                        token_json = res.json()
+                        if "access_token" in token_json and "open_id" in token_json:
+                            logger.info(f"✓ Successfully got token for UID {uid}")
+                            return token_json
+                        else:
+                            logger.warning(f"Missing required fields in response for UID {uid}: {token_json}")
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON response for UID {uid}: {res.text[:100]}")
+                else:
+                    logger.warning(f"HTTP {res.status_code} for UID {uid}: {res.text[:100]}")
                         
-                # If failed and not last attempt, wait shorter before retry
+                # Progressive backoff: wait longer on each retry
                 if attempt < retry_count:
-                    time.sleep(0.5)
+                    wait_time = (attempt + 1) * 0.5
+                    time.sleep(wait_time)
                     
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout for UID {uid}, attempt {attempt + 1}")
+                if attempt < retry_count:
+                    time.sleep(1)
+            except requests.exceptions.ConnectionError:
+                logger.warning(f"Connection error for UID {uid}, attempt {attempt + 1}")
+                if attempt < retry_count:
+                    time.sleep(2)
             except Exception as e:
+                logger.error(f"Unexpected error for UID {uid}, attempt {attempt + 1}: {e}")
                 if attempt < retry_count:
-                    time.sleep(0.5)
-                    continue
+                    time.sleep(1)
                     
+        logger.error(f"✗ Failed to get token for UID {uid} after {retry_count + 1} attempts")
         return None
 
     def encrypt_message(self, key: bytes, iv: bytes, plaintext: bytes) -> bytes:
@@ -505,8 +553,8 @@ class RealTokenGenerator:
             for i, account in enumerate(accounts)
         ]
         
-        # Use ThreadPoolExecutor for parallel processing with optimized thread count
-        max_workers = min(15, total_accounts)  # Increased to 15 concurrent requests for even faster speed
+        # Use ThreadPoolExecutor with rate limiting for better stability on deployment platforms
+        max_workers = min(8, total_accounts)  # Reduced to 8 to avoid rate limiting on Render/cloud platforms
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all tasks
@@ -606,8 +654,12 @@ def get_generator_status():
     return real_token_generator.get_status()
 
 def generate_tokens_now():
-    """Generate tokens now"""
+    """Generate tokens now"""  
     real_token_generator.generate_all_tokens()
+
+def generate_single_token(uid: str, password: str) -> Optional[Dict]:
+    """Generate a single JWT token for manual testing"""
+    return real_token_generator.generate_real_jwt_token(uid, password)
 
 if __name__ == "__main__":
     # For testing purposes
