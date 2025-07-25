@@ -15,3 +15,8 @@ flask-sqlalchemy
 sqlalchemy
 psycopg2-binary
 serverless-wsgi
+email_validator
+flask
+flask-sqlalchemy
+gunicorn
+psycopg2-binary
