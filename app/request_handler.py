@@ -6,7 +6,7 @@ from app.encryption import encrypt_message
 from app.protobuf_handler import create_like_protobuf, decode_protobuf
 
 
-async def send_request(encrypted_uid, token, url):
+async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
     try:
         edata = bytes.fromhex(encrypted_uid)
         headers = {
@@ -20,24 +20,48 @@ async def send_request(encrypted_uid, token, url):
             "ReleaseVersion": "OB49",
         }
         
-        # Optimized timeout and retry logic
-        timeout = aiohttp.ClientTimeout(total=8)  # Faster timeout
+        # Enhanced retry logic for specific UIDs
+        if uid == "2926998273":
+            max_retries = 8  # More retries for problematic UID
+            timeout = aiohttp.ClientTimeout(total=15)  # Longer timeout
+        else:
+            timeout = aiohttp.ClientTimeout(total=8)
+        
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            try:
-                async with session.post(url, data=edata, headers=headers) as response:
-                    if response.status == 200:
-                        return await response.text()
-                    elif response.status == 429:
-                        # Quick retry for rate limiting
-                        await asyncio.sleep(1)
-                        async with session.post(url, data=edata, headers=headers) as retry_response:
-                            if retry_response.status == 200:
-                                return await retry_response.text()
+            for attempt in range(max_retries + 1):
+                try:
+                    async with session.post(url, data=edata, headers=headers) as response:
+                        if response.status == 200:
+                            return await response.text()
+                        elif response.status == 429:
+                            # Rate limited - progressive backoff
+                            if attempt < max_retries:
+                                wait_time = (attempt + 1) * 2.0
+                                await asyncio.sleep(wait_time)
+                                continue
+                        elif response.status >= 500:
+                            # Server error - retry
+                            if attempt < max_retries:
+                                await asyncio.sleep(1.0 + attempt)
+                                continue
+                        else:
+                            # Other errors - quick retry only
+                            if attempt < 2:
+                                await asyncio.sleep(0.5)
+                                continue
+                        
+                        return None
+                        
+                except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+                    if attempt < max_retries:
+                        await asyncio.sleep(1.0 + attempt)
+                        continue
                     return None
-            except (asyncio.TimeoutError, aiohttp.ClientError):
-                return None
+                    
+            return None
+            
     except Exception as e:
-        print(f"❌ Request error: {e}")
+        print(f"❌ Request error for UID {uid}: {e}")
         return None
 
 
@@ -62,7 +86,7 @@ async def send_multiple_requests(uid, server_name, url):
     
     async def send_with_semaphore(token):
         async with semaphore:
-            result = await send_request(encrypted_uid, token, url)
+            result = await send_request(encrypted_uid, token, url, uid)
             if result is not None:
                 return 1
             return 0

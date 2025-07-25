@@ -75,11 +75,16 @@ class RealTokenGenerator:
             logger.error(f"Format validation error: {e}")
             return False
 
-    def get_token(self, password: str, uid: str, retry_count: int = 3) -> Optional[Dict]:
+    def get_token(self, password: str, uid: str, retry_count: int = 5) -> Optional[Dict]:
         """Get initial access token with enhanced validation and retry logic"""
         # Validate format first
         if not self.validate_uid_password_format(uid, password):
             return None
+            
+        # Special enhanced retry logic for UID 2926998273 (India server)
+        if uid == "2926998273":
+            retry_count = 10  # More retries for this specific UID
+            logger.info(f"🎯 Special enhanced retry for UID {uid} - using {retry_count} attempts")
             
         for attempt in range(retry_count + 1):
             try:
@@ -100,7 +105,9 @@ class RealTokenGenerator:
                     "client_id": "100067"
                 }
                 
-                res = self.session.post(url, headers=headers, data=data, timeout=10)
+                # Enhanced timeout for problematic UIDs
+                timeout = 15 if uid == "2926998273" else 10
+                res = self.session.post(url, headers=headers, data=data, timeout=timeout)
                 
                 if res.status_code == 200:
                     try:
@@ -112,6 +119,13 @@ class RealTokenGenerator:
                             logger.warning(f"Missing required fields in response for UID {uid}: {token_json}")
                     except json.JSONDecodeError:
                         logger.warning(f"Invalid JSON response for UID {uid}: {res.text[:100]}")
+                elif res.status_code == 429:
+                    # Rate limited - wait longer
+                    logger.warning(f"Rate limited for UID {uid}, attempt {attempt + 1}")
+                    if attempt < retry_count:
+                        wait_time = (attempt + 1) * 3.0  # Longer wait for rate limits
+                        time.sleep(wait_time)
+                        continue
                 else:
                     logger.warning(f"HTTP {res.status_code} for UID {uid}: {res.text[:100]}")
                         
@@ -123,17 +137,15 @@ class RealTokenGenerator:
             except requests.exceptions.Timeout:
                 logger.warning(f"Timeout for UID {uid}, attempt {attempt + 1}")
                 if attempt < retry_count:
-                    time.sleep(2)  # Longer timeout wait
+                    time.sleep(3)  # Longer timeout wait
             except requests.exceptions.ConnectionError:
                 logger.warning(f"Connection error for UID {uid}, attempt {attempt + 1}")
                 if attempt < retry_count:
-                    time.sleep(2)  # Wait for connection issues
-                if attempt < retry_count:
-                    time.sleep(2)
+                    time.sleep(3)  # Wait for connection issues
             except Exception as e:
                 logger.error(f"Unexpected error for UID {uid}, attempt {attempt + 1}: {e}")
                 if attempt < retry_count:
-                    time.sleep(1)
+                    time.sleep(2)
                     
         logger.error(f"✗ Failed to get token for UID {uid} after {retry_count + 1} attempts")
         return None
@@ -428,21 +440,50 @@ class RealTokenGenerator:
                 'ReleaseVersion': "OB49"
             }
 
-            # Try the request with retry logic using persistent session
-            for attempt in range(3):  # More attempts with longer delays
+            # Enhanced retry logic with special handling for specific UIDs
+            max_attempts = 5
+            if uid == "2926998273":
+                max_attempts = 10  # More attempts for problematic UID
+                logger.info(f"🎯 Enhanced JWT generation for UID {uid} - using {max_attempts} attempts")
+            
+            response = None
+            for attempt in range(max_attempts):
                 try:
-                    response = self.session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=15)
+                    timeout = 20 if uid == "2926998273" else 15
+                    response = self.session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=timeout)
+                    
                     if response.status_code == 200:
+                        logger.info(f"✓ JWT request successful for UID {uid} on attempt {attempt + 1}")
                         break
-                    elif attempt < 2:  # Not last attempt
-                        time.sleep(1.0 + attempt)  # Progressive delay
+                    elif response.status_code == 429:
+                        # Rate limited - wait longer
+                        logger.warning(f"Rate limited during JWT generation for UID {uid}, attempt {attempt + 1}")
+                        if attempt < max_attempts - 1:
+                            wait_time = (attempt + 1) * 3.0
+                            time.sleep(wait_time)
+                            continue
+                    else:
+                        logger.warning(f"HTTP {response.status_code} during JWT generation for UID {uid}, attempt {attempt + 1}")
+                        if attempt < max_attempts - 1:
+                            time.sleep(1.0 + attempt)
+                            continue
+                            
+                except requests.exceptions.Timeout:
+                    logger.warning(f"Timeout during JWT generation for UID {uid}, attempt {attempt + 1}")
+                    if attempt < max_attempts - 1:
+                        time.sleep(2.0 + attempt)
                         continue
                 except Exception as e:
-                    if attempt < 2:  # Not last attempt
+                    logger.error(f"Error during JWT generation for UID {uid}, attempt {attempt + 1}: {e}")
+                    if attempt < max_attempts - 1:
                         time.sleep(1.0 + attempt)
                         continue
                     else:
                         raise e
+            
+            if response is None:
+                logger.error(f"✗ All JWT generation attempts failed for UID {uid}")
+                return None
 
             if response.status_code == 200:
                 example_msg = output_pb2.Garena_420()
