@@ -220,25 +220,27 @@ def handle_requests():
         # Try servers in order of likelihood
         servers_to_try = ["IND", "PK", "BD", "SG"]
         for test_server in servers_to_try:
-            tokens = load_tokens(test_server)
-            if tokens and len(tokens) > 0:
-                encrypted_uid = enc(uid)
-                if encrypted_uid:
-                    # Try with first token to test if UID exists on this server
-                    result = make_request(encrypted_uid, test_server, tokens[0]["token"])
-                    if result is not None:
-                        server_name = test_server
-                        app.logger.info(f"✓ Found UID {uid} on server {test_server}")
-                        break
+            with app.app_context():
+                tokens = load_tokens(test_server)
+                if tokens and len(tokens) > 0:
+                    encrypted_uid = enc(uid)
+                    if encrypted_uid:
+                        # Try with first token to test if UID exists on this server
+                        result = make_request(encrypted_uid, test_server, tokens[0]["token"])
+                        if result is not None:
+                            server_name = test_server
+                            app.logger.info(f"✓ Found UID {uid} on server {test_server}")
+                            break
                         
         if not server_name:
             return unicode_jsonify({"error": f"UID {uid} not found on any available server"}, 404)
 
     try:
         async def process_request_async():
-            tokens = load_tokens(server_name)
-            if tokens is None:
-                raise Exception("Failed to load tokens.")
+            with app.app_context():
+                tokens = load_tokens(server_name)
+                if tokens is None or len(tokens) == 0:
+                    raise Exception("Failed to load tokens.")
             
             # Try multiple tokens if first one fails
             token_used = None
@@ -274,8 +276,9 @@ def handle_requests():
             else:
                 url = "https://clientbp.ggblueshark.com/LikeProfile"
 
-            # Send likes with improved rate limiting handling - ASYNC
-            likes_sent = await send_multiple_requests(uid, server_name, url)
+            # Send likes with improved rate limiting handling - ASYNC  
+            with app.app_context():
+                likes_sent = await send_multiple_requests(uid, server_name, url)
             app.logger.info(f"💫 Attempted to send likes for UID {uid}, successful requests: {likes_sent if likes_sent else 0}")
 
             # Use the same working token for final check
@@ -418,34 +421,12 @@ def view_tokens():
             except Exception as db_error:
                 app.logger.warning(f"Database token retrieval failed, falling back to files: {str(db_error)}")
         
-        # Fallback to file-based tokens if database is empty or failed
-        if region == "IND" or not region:
-            try:
-                with open("tokens/ind.json", 'r') as f:
-                    ind_tokens = json.load(f)
-                    tokens_data["india"] = {
-                        "total": len(ind_tokens),
-                        "tokens": ind_tokens[:10] if len(ind_tokens) > 10 else ind_tokens  # Show first 10
-                    }
-            except:
-                tokens_data["india"] = {"total": 0, "tokens": []}
-        
-        if region == "PK" or not region:
-            try:
-                with open("tokens/pk.json", 'r') as f:
-                    pk_tokens = json.load(f)
-                    tokens_data["pakistan"] = {
-                        "total": len(pk_tokens),
-                        "tokens": pk_tokens[:10] if len(pk_tokens) > 10 else pk_tokens  # Show first 10
-                    }
-            except:
-                tokens_data["pakistan"] = {"total": 0, "tokens": []}
-        
+        # Database-only approach - no file fallback
         return unicode_jsonify({
-            "status": "success",
-            "message": "Retrieved tokens from files (database unavailable)",
-            "source": "files",
-            "data": tokens_data
+            "status": "error",
+            "message": "No tokens found in custom Neon database",
+            "source": "database_only",
+            "data": {"india": {"total": 0, "tokens": []}, "pakistan": {"total": 0, "tokens": []}}
         })
         
     except Exception as e:

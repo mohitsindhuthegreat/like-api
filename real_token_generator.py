@@ -606,32 +606,13 @@ class RealTokenGenerator:
             return []
 
     def save_tokens(self, tokens: List[Dict], file_path: str) -> bool:
-        """Save tokens to JSON file AND database - this replaces old tokens automatically"""
+        """Save tokens to database only - file storage removed"""
         try:
-            # First, remove old tokens file if it exists
-            if os.path.exists(file_path):
-                old_tokens = []
-                try:
-                    with open(file_path, 'r') as f:
-                        old_tokens = json.load(f)
-                    logger.info(f"🗑️ Removing {len(old_tokens)} old tokens from {file_path}")
-                except:
-                    pass
-            
-            # Save new tokens - this automatically replaces the old file
-            with open(file_path, 'w') as f:
-                json.dump(tokens, f, indent=2)
-            logger.info(f"💾 Saved {len(tokens)} fresh tokens to {file_path}")
-            
-            # Also save to database if available
-            try:
-                self.save_tokens_to_database(tokens, file_path)
-            except Exception as db_error:
-                logger.warning(f"Failed to save tokens to database: {str(db_error)}")
-            
+            # Save to database only
+            self.save_tokens_to_database(tokens, file_path)
             return True
         except Exception as e:
-            logger.error(f"Error saving tokens to {file_path}: {str(e)}")
+            logger.error(f"Error saving tokens to database: {str(e)}")
             return False
     
     def save_tokens_to_database(self, tokens: List[Dict], file_path: str):
@@ -667,7 +648,7 @@ class RealTokenGenerator:
                         continue
                 
                 db.session.commit()
-                logger.info(f"✅ Saved {len(tokens)} tokens to database for {server_name} server")
+                logger.info(f"✅ Saved {len(tokens)} tokens to custom Neon database for {server_name} server")
                 
         except Exception as e:
             logger.error(f"Database token save error: {str(e)}")
@@ -760,9 +741,9 @@ class RealTokenGenerator:
                     with self.tokens_lock:
                         successful_tokens.append(result)
 
-        # Save successful tokens
+        # Save successful tokens to database only
         if successful_tokens:
-            self.save_tokens(successful_tokens, output_file)
+            self.save_tokens_to_database(successful_tokens, output_file)
             logger.info(f"✅ {region_name} FAST JWT token generation completed: {len(successful_tokens)}/{total_accounts} successful")
         else:
             logger.warning(f"❌ No tokens generated for {region_name}")
