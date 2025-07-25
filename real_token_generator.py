@@ -3,6 +3,7 @@ import time
 import threading
 import schedule
 import logging
+import os
 from datetime import datetime
 from typing import Dict, List, Optional
 import requests
@@ -14,7 +15,7 @@ import output_pb2
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
 import concurrent.futures
-from threading import Lock
+from threading import Lock, Semaphore
 
 # Disable SSL warning
 warnings.filterwarnings("ignore", category=InsecureRequestWarning)
@@ -35,14 +36,16 @@ class RealTokenGenerator:
         self.is_running = False
         self.generation_thread = None
         self.tokens_lock = Lock()
+        # Rate limiting semaphore to control concurrent requests
+        self.request_semaphore = Semaphore(4)  # Max 4 concurrent requests
         # Create persistent session for reuse
         self.session = requests.Session()
         self.session.verify = False
         # Configure session with connection pooling
         adapter = requests.adapters.HTTPAdapter(
-            pool_connections=20,
-            pool_maxsize=100,
-            max_retries=3
+            pool_connections=10,
+            pool_maxsize=20,
+            max_retries=2
         )
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
@@ -112,17 +115,19 @@ class RealTokenGenerator:
                 else:
                     logger.warning(f"HTTP {res.status_code} for UID {uid}: {res.text[:100]}")
                         
-                # Progressive backoff: wait longer on each retry
+                # Progressive backoff: wait much longer on each retry for rate limits
                 if attempt < retry_count:
-                    wait_time = (attempt + 1) * 0.5
+                    wait_time = (attempt + 1) * 2.0  # Increased wait time
                     time.sleep(wait_time)
                     
             except requests.exceptions.Timeout:
                 logger.warning(f"Timeout for UID {uid}, attempt {attempt + 1}")
                 if attempt < retry_count:
-                    time.sleep(1)
+                    time.sleep(2)  # Longer timeout wait
             except requests.exceptions.ConnectionError:
                 logger.warning(f"Connection error for UID {uid}, attempt {attempt + 1}")
+                if attempt < retry_count:
+                    time.sleep(2)  # Wait for connection issues
                 if attempt < retry_count:
                     time.sleep(2)
             except Exception as e:
@@ -424,17 +429,17 @@ class RealTokenGenerator:
             }
 
             # Try the request with retry logic using persistent session
-            for attempt in range(2):  # Reduced attempts for speed
+            for attempt in range(3):  # More attempts with longer delays
                 try:
-                    response = self.session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=12)
+                    response = self.session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=15)
                     if response.status_code == 200:
                         break
-                    elif attempt < 1:  # Not last attempt
-                        time.sleep(0.3)
+                    elif attempt < 2:  # Not last attempt
+                        time.sleep(1.0 + attempt)  # Progressive delay
                         continue
                 except Exception as e:
-                    if attempt < 1:  # Not last attempt
-                        time.sleep(0.3)
+                    if attempt < 2:  # Not last attempt
+                        time.sleep(1.0 + attempt)
                         continue
                     else:
                         raise e
@@ -498,41 +503,59 @@ class RealTokenGenerator:
             return []
 
     def save_tokens(self, tokens: List[Dict], file_path: str) -> bool:
-        """Save tokens to JSON file"""
+        """Save tokens to JSON file - this replaces old tokens automatically"""
         try:
+            # First, remove old tokens file if it exists
+            if os.path.exists(file_path):
+                old_tokens = []
+                try:
+                    with open(file_path, 'r') as f:
+                        old_tokens = json.load(f)
+                    logger.info(f"🗑️ Removing {len(old_tokens)} old tokens from {file_path}")
+                except:
+                    pass
+            
+            # Save new tokens - this automatically replaces the old file
             with open(file_path, 'w') as f:
                 json.dump(tokens, f, indent=2)
-            logger.info(f"Saved {len(tokens)} tokens to {file_path}")
+            logger.info(f"💾 Saved {len(tokens)} fresh tokens to {file_path}")
             return True
         except Exception as e:
             logger.error(f"Error saving tokens to {file_path}: {str(e)}")
             return False
 
     def process_single_account(self, account_data):
-        """Process a single account for token generation"""
+        """Process a single account for token generation with rate limiting"""
         account, i, total_accounts, region_name = account_data
-        try:
-            guest_info = account.get('guest_account_info', {})
-            uid = guest_info.get('com.garena.msdk.guest_uid')
-            password = guest_info.get('com.garena.msdk.guest_password')
-            
-            if not uid or not password:
-                logger.warning(f"Invalid account data at position {i}")
-                return None
-
-            logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
-            
-            token_result = self.generate_real_jwt_token(uid, password)
-            if token_result:
-                logger.info(f"✓ Generated REAL JWT token for UID {uid}")
-                return token_result
-            else:
-                logger.warning(f"✗ Failed to generate token for UID {uid}")
-                return None
+        
+        # Use semaphore to limit concurrent requests
+        with self.request_semaphore:
+            try:
+                guest_info = account.get('guest_account_info', {})
+                uid = guest_info.get('com.garena.msdk.guest_uid')
+                password = guest_info.get('com.garena.msdk.guest_password')
                 
-        except Exception as e:
-            logger.error(f"Error processing account {i} in {region_name}: {str(e)}")
-            return None
+                if not uid or not password:
+                    logger.warning(f"Invalid account data at position {i}")
+                    return None
+
+                logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
+                
+                # Add small delay before each request to further avoid rate limiting
+                time.sleep(0.2)
+                
+                token_result = self.generate_real_jwt_token(uid, password)
+                
+                if token_result:
+                    logger.info(f"✓ Generated REAL JWT token for UID {uid}")
+                    return token_result
+                else:
+                    logger.warning(f"✗ Failed to generate token for UID {uid}")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"Error processing account {i} in {region_name}: {str(e)}")
+                return None
 
     def generate_tokens_for_region_parallel(self, account_file: str, output_file: str, region_name: str) -> int:
         """Generate tokens for ALL accounts in a region using parallel processing"""
@@ -553,15 +576,18 @@ class RealTokenGenerator:
             for i, account in enumerate(accounts)
         ]
         
-        # Use ThreadPoolExecutor with rate limiting for better stability on deployment platforms
-        max_workers = min(8, total_accounts)  # Reduced to 8 to avoid rate limiting on Render/cloud platforms
+        # Use ThreadPoolExecutor with aggressive rate limiting to avoid HTTP 429 errors
+        max_workers = min(4, total_accounts)  # Reduced to 4 to completely avoid rate limiting
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_account = {
-                executor.submit(self.process_single_account, account_data): account_data 
-                for account_data in account_data_list
-            }
+            # Submit tasks with delays to avoid overwhelming the API
+            future_to_account = {}
+            for i, account_data in enumerate(account_data_list):
+                # Add small delay between submissions to spread out the load
+                if i > 0 and i % 4 == 0:  # Every 4 submissions, wait
+                    time.sleep(0.5)
+                future = executor.submit(self.process_single_account, account_data)
+                future_to_account[future] = account_data
             
             # Collect results as they complete
             for future in concurrent.futures.as_completed(future_to_account):
@@ -609,6 +635,7 @@ class RealTokenGenerator:
         
         # Schedule token generation every 4 hours
         schedule.every(4).hours.do(self.generate_all_tokens)
+        logger.info("⏰ Automatic token refresh set for every 4 hours")
         
         # Generate tokens immediately on start
         threading.Thread(target=self.generate_all_tokens, daemon=True).start()

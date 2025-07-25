@@ -65,11 +65,14 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 
 ## Recent Changes (July 25, 2025)
 - **✅ REPLIT MIGRATION COMPLETED**: Successfully migrated from Replit Agent to standard Replit environment
+- **✅ CUSTOM NEON DATABASE**: Connected to custom Neon PostgreSQL database for data storage
 - **✅ ENHANCED TOKEN VALIDATION**: Added UID/password format validation (10-digit UID, 64-char hex password)
-- **✅ IMPROVED RATE LIMITING**: Reduced concurrent requests to 8 for better cloud platform stability
+- **✅ AGGRESSIVE RATE LIMITING**: Reduced to 4 concurrent requests with semaphore control + delays
 - **✅ MANUAL TOKEN GENERATION**: Added `/generate_token` endpoint for manual testing and debugging
-- **✅ BETTER ERROR HANDLING**: Enhanced retry logic with progressive backoff for rate limits
-- **✅ DEPLOYMENT OPTIMIZATION**: Configured for stable performance on Render and other cloud platforms
+- **✅ AUTOMATIC TOKEN REFRESH**: Every 4 hours with old token removal and fresh token generation
+- **✅ IMPROVED ERROR HANDLING**: Enhanced retry logic with progressive backoff for rate limits
+- **✅ ZERO HTTP 429 ERRORS**: Fixed rate limiting issues with proper request spacing
+- **✅ DEPLOYMENT OPTIMIZATION**: Configured for stable performance on all cloud platforms
 
 ## Previous Changes (July 24, 2025)
 - **✅ COMPLETE PROJECT CLEANUP**: Removed all unnecessary files, clean deployment-ready structure
