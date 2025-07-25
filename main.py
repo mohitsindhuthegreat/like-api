@@ -19,8 +19,10 @@ from nickname_processor import nickname_processor
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
 
-# Use Replit's PostgreSQL database
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+# Configure custom Neon database
+custom_database_url = "postgresql://neondb_owner:npg_2wvRQWkasIr9@ep-old-king-a1qaotvu-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+os.environ["DATABASE_URL"] = custom_database_url
+app.config["SQLALCHEMY_DATABASE_URI"] = custom_database_url
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
@@ -66,7 +68,7 @@ if DATABASE_AVAILABLE:
         db.init_app(app)
         with app.app_context():
             db.create_all()
-        print("✅ Using PostgreSQL database for data storage")
+        print("✅ Using custom Neon database for data storage")
     except Exception as e:
         print(f"❌ Database setup error: {e}")
         DATABASE_AVAILABLE = False
@@ -79,8 +81,11 @@ def save_player_record(uid, nickname, server_name, likes_count):
     try:
         if DATABASE_AVAILABLE:
             with app.app_context():
+                # Convert UID to string to match database schema
+                uid_str = str(uid)
+                
                 # Check if record exists
-                existing_record = PlayerRecord.query.filter_by(uid=uid, server_name=server_name).first()
+                existing_record = PlayerRecord.query.filter_by(uid=uid_str, server_name=server_name).first()
                 
                 if existing_record:
                     # Update existing record
@@ -90,7 +95,7 @@ def save_player_record(uid, nickname, server_name, likes_count):
                 else:
                     # Create new record
                     new_record = PlayerRecord(
-                        uid=uid,
+                        uid=uid_str,
                         nickname=nickname,
                         server_name=server_name,
                         likes_count=likes_count
@@ -98,12 +103,12 @@ def save_player_record(uid, nickname, server_name, likes_count):
                     db.session.add(new_record)
                 
                 db.session.commit()
-                app.logger.info(f"📝 PostgreSQL DB: UID {uid}: {nickname}")
+                app.logger.info(f"📝 Custom Neon DB: UID {uid}: {nickname}")
                 return True
         else:
             # Fallback to internal storage
             player_records[f"{uid}_{server_name}"] = {
-                "uid": uid,
+                "uid": str(uid),
                 "nickname": nickname,
                 "server_name": server_name,
                 "likes_count": likes_count,
