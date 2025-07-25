@@ -476,30 +476,85 @@ class RealTokenGenerator:
             logger.error(f"Error generating JWT token for UID {uid}: {str(e)}")
             return None
 
+    def validate_account_data(self, account: Dict) -> bool:
+        """Validate account UID and password format"""
+        try:
+            guest_info = account.get("guest_account_info", {})
+            uid = guest_info.get("com.garena.msdk.guest_uid", "")
+            password = guest_info.get("com.garena.msdk.guest_password", "")
+            
+            # Validate UID format (should be 10 digits)
+            if not uid or not uid.isdigit() or len(uid) != 10:
+                logger.warning(f"❌ Invalid UID format: {uid} (should be 10 digits)")
+                return False
+            
+            # Validate password format (should be 64 character hex string)
+            if not password or len(password) != 64:
+                logger.warning(f"❌ Invalid password format for UID {uid}: length {len(password)} (should be 64 hex chars)")
+                return False
+            
+            # Check if password is valid hex
+            try:
+                int(password, 16)
+            except ValueError:
+                logger.warning(f"❌ Invalid password hex format for UID {uid}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Account validation error: {str(e)}")
+            return False
+
     def load_accounts(self, file_path: str) -> List[Dict]:
-        """Load accounts from JSON file"""
+        """Load and validate accounts from JSON file with enhanced format detection"""
         try:
             with open(file_path, 'r') as f:
                 content = f.read().strip()
                 
-                # Handle both array format and line-by-line format
-                if content.startswith('['):
-                    # Array format (IND_ACC.json)
-                    return json.loads(content)
+            raw_accounts = []
+            
+            # Handle both array format and line-by-line format
+            if content.startswith('['):
+                # Array format (IND_ACC.json)
+                try:
+                    raw_accounts = json.loads(content)
+                    logger.info(f"📄 Loaded {len(raw_accounts)} accounts from array format: {file_path}")
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ JSON decode error in {file_path}: {str(e)}")
+                    return []
+            else:
+                # Line-by-line format (PK_ACC.json)
+                for line_num, line in enumerate(content.split('\n'), 1):
+                    line = line.strip()
+                    if line:
+                        try:
+                            account = json.loads(line)
+                            raw_accounts.append(account)
+                        except json.JSONDecodeError as e:
+                            logger.warning(f"❌ Skipping invalid JSON on line {line_num} in {file_path}: {str(e)}")
+                            continue
+                
+                logger.info(f"📄 Loaded {len(raw_accounts)} accounts from line-by-line format: {file_path}")
+            
+            # Validate all accounts and filter out invalid ones
+            valid_accounts = []
+            invalid_count = 0
+            
+            for i, account in enumerate(raw_accounts, 1):
+                if self.validate_account_data(account):
+                    valid_accounts.append(account)
                 else:
-                    # Line-by-line format (PK_ACC.json)
-                    accounts = []
-                    for line in content.split('\n'):
-                        line = line.strip()
-                        if line:
-                            try:
-                                accounts.append(json.loads(line))
-                            except json.JSONDecodeError:
-                                continue
-                    return accounts
+                    invalid_count += 1
+                    guest_info = account.get("guest_account_info", {})
+                    uid = guest_info.get("com.garena.msdk.guest_uid", "unknown")
+                    logger.warning(f"❌ Skipping invalid account {i}: UID {uid}")
+            
+            logger.info(f"✅ Account validation complete for {file_path}: {len(valid_accounts)} valid, {invalid_count} invalid")
+            return valid_accounts
                     
         except Exception as e:
-            logger.error(f"Error loading accounts from {file_path}: {str(e)}")
+            logger.error(f"❌ Error loading accounts from {file_path}: {str(e)}")
             return []
 
     def save_tokens(self, tokens: List[Dict], file_path: str) -> bool:
@@ -570,49 +625,54 @@ class RealTokenGenerator:
             logger.error(f"Database token save error: {str(e)}")
 
     def process_single_account(self, account_data):
-        """Process a single account for token generation with rate limiting"""
+        """Process a single account for token generation with enhanced validation and rate limiting"""
         account, i, total_accounts, region_name = account_data
         
         # Use semaphore to limit concurrent requests
         with self.request_semaphore:
             try:
+                # Double-check validation before processing
+                if not self.validate_account_data(account):
+                    guest_info = account.get('guest_account_info', {})
+                    uid = guest_info.get('com.garena.msdk.guest_uid', 'unknown')
+                    logger.warning(f"❌ Skipping invalid account at position {i}: UID {uid}")
+                    return None
+                
                 guest_info = account.get('guest_account_info', {})
                 uid = guest_info.get('com.garena.msdk.guest_uid')
                 password = guest_info.get('com.garena.msdk.guest_password')
-                
-                if not uid or not password:
-                    logger.warning(f"Invalid account data at position {i}")
-                    return None
 
                 logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
                 
                 # Add small delay before each request to further avoid rate limiting
-                time.sleep(0.2)
+                time.sleep(0.25)  # Increased delay slightly
                 
                 token_result = self.generate_real_jwt_token(uid, password)
                 
                 if token_result:
-                    logger.info(f"✓ Generated REAL JWT token for UID {uid}")
+                    token_result["uid"] = uid  # Add UID to token data
+                    logger.info(f"✅ Generated REAL JWT token for UID {uid}")
                     return token_result
                 else:
-                    logger.warning(f"✗ Failed to generate token for UID {uid}")
+                    logger.warning(f"❌ Failed to generate token for UID {uid}")
                     return None
                     
             except Exception as e:
-                logger.error(f"Error processing account {i} in {region_name}: {str(e)}")
+                logger.error(f"❌ Error processing account {i} in {region_name}: {str(e)}")
                 return None
 
     def generate_tokens_for_region_parallel(self, account_file: str, output_file: str, region_name: str) -> int:
-        """Generate tokens for ALL accounts in a region using parallel processing"""
+        """Generate tokens for ALL accounts in a region using enhanced validation and parallel processing"""
         logger.info(f"Starting FAST parallel REAL JWT token generation for {region_name} region...")
         
+        # Load and validate accounts using new validation system
         accounts = self.load_accounts(account_file)
         if not accounts:
-            logger.warning(f"No accounts found in {account_file}")
+            logger.warning(f"❌ No valid accounts found in {account_file}")
             return 0
 
         total_accounts = len(accounts)
-        logger.info(f"🎯 Processing ALL {total_accounts} accounts from {account_file}")
+        logger.info(f"🎯 Processing {total_accounts} VALIDATED accounts from {account_file}")
         successful_tokens = []
         
         # Prepare account data for parallel processing
