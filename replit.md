@@ -69,21 +69,23 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
   - Removed all file system fallback code from token loading functions
   - System now exclusively uses database for token storage and retrieval
   - Clean architecture with no file dependencies
+- **✅ VERCEL DEPLOYMENT OPTIMIZATION**: Flask API optimized for Vercel serverless
+  - Created api/index.py entry point for Vercel functions
+  - Updated vercel.json with proper routing and 60s timeout
+  - Added VERCEL environment flag to skip token generation on serverless
+  - Created deployment guides (README_VERCEL.md, VERCEL_DEPLOY.md)
+  - Serverless-ready with database-only token loading
 - **✅ TOKEN GENERATION & LOADING VERIFIED**: 
-  - 308 fresh JWT tokens generated (209 IND + 99 PK) to custom Neon database
+  - 311 fresh JWT tokens generated (212 IND + 99 PK) to custom Neon database
   - Token loading function correctly retrieves from database with proper Flask context
   - Fixed application context issues in async request processing
   - All tokens stored and loaded exclusively from custom Neon database
 - **✅ API FUNCTIONALITY CONFIRMED**: 
   - UID 2942087766 (Pakistan): 99 like requests sent successfully using database tokens
-  - Perfect Unicode nickname processing: 리틀뿅5803S
+  - UID 3978250517 (India): 100 likes added successfully (110→210 likes)
+  - Perfect Unicode nickname processing: 리틀뿅5803S, RDX_FF_KILLE
   - Auto-server detection working with database-loaded tokens
   - Player records saved exclusively to custom Neon database
-- **✅ CLEAN CODEBASE**: 
-  - Removed file-based token loading from app/utils.py
-  - Updated real_token_generator.py to save only to database
-  - Modified /tokens endpoint to use database-only approach
-  - Fixed all Flask application context issues
 
 ## Previous Changes (July 24, 2025)
 - **✅ COMPLETE PROJECT CLEANUP**: Removed all unnecessary files, clean deployment-ready structure

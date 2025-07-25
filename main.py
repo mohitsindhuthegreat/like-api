@@ -433,16 +433,20 @@ def view_tokens():
         return unicode_jsonify({"error": f"Failed to retrieve tokens: {str(e)}"}, 500)
 
 
-# Initialize token generation when app starts
+# Initialize token generation when app starts (only if not on Vercel)
 def initialize_token_generator():
     """Initialize token generator when app starts"""
     try:
-        start_token_generation()
-        print("Token generator started successfully")
+        # Skip token generation on Vercel to avoid timeouts
+        if not os.environ.get('VERCEL'):
+            start_token_generation()
+            print("Token generator started successfully")
+        else:
+            print("Running on Vercel - skipping automatic token generation")
     except Exception as e:
         print(f"Failed to start token generator: {e}")
 
-# Start the token generator
+# Start the token generator (only in non-Vercel environments)
 initialize_token_generator()
 
 
