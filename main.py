@@ -238,9 +238,9 @@ def handle_requests():
             else:
                 url = "https://clientbp.ggblueshark.com/LikeProfile"
 
-            # Send likes with improved rate limiting handling - ASYNC  
+            # Send likes with ALL available tokens for maximum success - ASYNC  
             with app.app_context():
-                likes_sent = await send_multiple_requests(uid, server_name, url)
+                likes_sent = await send_multiple_requests(uid, server_name, url, token_count=None)
             app.logger.info(f"💫 Attempted to send likes for UID {uid}, successful requests: {likes_sent if likes_sent else 0}")
 
             # Use the same working token for final check
@@ -336,16 +336,247 @@ def status():
         "regions": ["India (IND)", "Pakistan (PK)", "Bangladesh (BD)", "Singapore (SG)"],
         "features": [
             "Auto-detect correct server for any UID",
-            "Multi-region support with 210+ real tokens",
-            "Use ALL available tokens for maximum likes",
-            "Real-time token generation every 4 hours"
+            "Multi-region support with 600+ real tokens",
+            "India: 200 random tokens per request (maximum likes)",
+            "Pakistan: ALL accounts used for maximum success",
+            "Real-time token generation every 6 hours with 677 accounts"
         ],
         "usage": {
-            "endpoint": "/like?uid=YOUR_UID",
-            "auto_detect": "/like?uid=2942087766",
-            "manual_server": "/like?uid=2942087766&server_name=PK"
+            "like_endpoint": "/like?uid=YOUR_UID",
+            "info_endpoint": "/info?uid=YOUR_UID", 
+            "ban_endpoint": "/ban?uid=YOUR_UID",
+            "examples": {
+                "send_likes": "/like?uid=2942087766",
+                "get_player_info": "/info?uid=2942087766", 
+                "check_ban_status": "/ban?uid=2942087766",
+                "manual_server": "/like?uid=2942087766&server_name=PK",
+                "note": "India uses 200 random tokens each time, Pakistan uses ALL accounts with expired token detection"
+            }
         }
     })
+
+@app.route('/ban', methods=['GET'])
+def check_ban_status():
+    """Check Free Fire player ban status"""
+    uid = request.args.get("uid")
+    
+    if not uid:
+        return unicode_jsonify({"error": "UID parameter is required"}, 400)
+    
+    # Validate UID format
+    if not uid.isdigit() or len(uid) < 6:
+        return unicode_jsonify({
+            "error": "Invalid UID format",
+            "details": "UID must be only numbers with at least 6 digits"
+        }, 400)
+    
+    try:
+        async def fetch_ban_status_async():
+            import aiohttp
+            ban_url = f"https://ff.garena.com/api/antihack/check_banned?lang=en&uid={uid}"
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'authority': 'ff.garena.com',
+                'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
+                'referer': 'https://ff.garena.com/en/support/',
+                'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'x-requested-with': 'B6FksShzIgjfrYImLpTsadjS86sddhFH'
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(ban_url, headers=headers) as response:
+                    if response.status != 200:
+                        return {
+                            "ban_status": "Clean Account",
+                            "ban_period": "null",
+                            "status": "unknown"
+                        }
+                    
+                    data = await response.json()
+                    ban_data = data.get('data', {})
+                    
+                    return {
+                        "ban_status": 'true' if ban_data.get('is_banned', False) else 'false',
+                        "ban_period": f"{ban_data.get('period', 0)} months" if ban_data.get('period', 0) > 0 else 'null',
+                        "status": "banned" if ban_data.get('is_banned', False) else "clean"
+                    }
+        
+        # Run async function
+        def run_async():
+            return asyncio.run(fetch_ban_status_async())
+            
+        with ThreadPoolExecutor() as executor:
+            ban_result = executor.submit(run_async).result()
+        
+        response_data = {
+            "uid": uid,
+            "ban_status": ban_result["ban_status"],
+            "ban_period": ban_result["ban_period"],
+            "account_status": ban_result["status"],
+            "checked_at": datetime.utcnow().isoformat()
+        }
+        
+        return unicode_jsonify({
+            "success": True,
+            "data": response_data
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error checking ban status for UID {uid}: {e}")
+        return unicode_jsonify({
+            "error": "Failed to check ban status",
+            "uid": uid,
+            "details": str(e)
+        }, 500)
+
+@app.route('/info', methods=['GET'])
+def get_player_info():
+    """Get detailed Free Fire player information by UID"""
+    uid = request.args.get("uid")
+    
+    if not uid:
+        return unicode_jsonify({"error": "UID parameter is required"}, 400)
+    
+    # Validate UID format
+    if not uid.isdigit() or len(uid) < 6:
+        return unicode_jsonify({
+            "error": "Invalid UID format",
+            "details": "UID must be only numbers with at least 6 digits"
+        }, 400)
+    
+    try:
+        async def fetch_player_info_async():
+            import aiohttp
+            api_url = "https://glob-info.vercel.app/info"
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{api_url}?uid={uid}") as response:
+                    if response.status == 404:
+                        return None
+                    if response.status != 200:
+                        raise Exception(f"API returned status {response.status}")
+                    
+                    data = await response.json()
+                    return data
+        
+        def convert_unix_timestamp(timestamp):
+            """Convert unix timestamp to readable format"""
+            if timestamp and str(timestamp).isdigit():
+                return datetime.utcfromtimestamp(int(timestamp)).strftime('%Y-%m-%d %H:%M:%S UTC')
+            return 'Not available'
+        
+        # Run async function
+        def run_async():
+            return asyncio.run(fetch_player_info_async())
+            
+        with ThreadPoolExecutor() as executor:
+            player_data = executor.submit(run_async).result()
+        
+        if player_data is None:
+            return unicode_jsonify({
+                "error": "Player not found",
+                "uid": uid,
+                "message": f"No player found with UID {uid}"
+            }, 404)
+        
+        # Extract and organize player information
+        basic_info = player_data.get('basicInfo', {})
+        captain_info = player_data.get('captainBasicInfo', {})
+        clan_info = player_data.get('clanBasicInfo', {})
+        credit_score_info = player_data.get('creditScoreInfo', {})
+        pet_info = player_data.get('petInfo', {})
+        profile_info = player_data.get('profileInfo', {})
+        social_info = player_data.get('socialInfo', {})
+        
+        # Organize response data
+        response_data = {
+            "uid": uid,
+            "player_info": {
+                "nickname": basic_info.get('nickname', 'Unknown'),
+                "level": basic_info.get('level', 0),
+                "experience": basic_info.get('exp', 0),
+                "region": basic_info.get('region', 'Unknown'),
+                "likes": basic_info.get('liked', 0),
+                "honor_score": credit_score_info.get('creditScore', 0),
+                "signature": social_info.get('signature', '') or 'No signature',
+                "avatar_id": profile_info.get('avatarId', 0),
+                "banner_id": basic_info.get('bannerId', 0)
+            },
+            "game_stats": {
+                "current_bp_badges": basic_info.get('badgeCnt', 0),
+                "br_rank_points": basic_info.get('rankingPoints', 0) if basic_info.get('showBrRank') else None,
+                "cs_rank_points": basic_info.get('csRankingPoints', 0) if basic_info.get('showCsRank') else None,
+                "most_recent_ob": basic_info.get('releaseVersion', 'Unknown'),
+                "equipped_skills": profile_info.get('equipedSkills', [])
+            },
+            "timestamps": {
+                "created_at": convert_unix_timestamp(basic_info.get('createAt')),
+                "last_login": convert_unix_timestamp(basic_info.get('lastLoginAt'))
+            },
+            "pet_info": {
+                "equipped": pet_info.get('isSelected', False),
+                "name": pet_info.get('name', 'No pet'),
+                "level": pet_info.get('level', 0),
+                "experience": pet_info.get('exp', 0)
+            }
+        }
+        
+        # Add guild information if available
+        if clan_info:
+            guild_data = {
+                "guild_name": clan_info.get('clanName', 'No guild'),
+                "guild_id": clan_info.get('clanId', ''),
+                "guild_level": clan_info.get('clanLevel', 0),
+                "members": f"{clan_info.get('memberNum', 0)}/{clan_info.get('capacity', 0)}"
+            }
+            
+            # Add leader information if available
+            if captain_info:
+                guild_data["leader"] = {
+                    "name": captain_info.get('nickname', 'Unknown'),
+                    "uid": captain_info.get('accountId', ''),
+                    "level": captain_info.get('level', 0),
+                    "experience": captain_info.get('exp', 0),
+                    "title": captain_info.get('title', ''),
+                    "badges": captain_info.get('badgeCnt', 0),
+                    "br_rank": captain_info.get('rankingPoints', 0) if captain_info.get('showBrRank') else None,
+                    "cs_rank": captain_info.get('csRankingPoints', 0) if captain_info.get('showCsRank') else None,
+                    "last_login": convert_unix_timestamp(captain_info.get('lastLoginAt'))
+                }
+            
+            response_data["guild_info"] = guild_data
+        
+        # Save player record to database
+        try:
+            save_player_record(
+                uid=uid,
+                nickname=response_data["player_info"]["nickname"],
+                server_name=response_data["player_info"]["region"],
+                likes_count=response_data["player_info"]["likes"]
+            )
+        except Exception as e:
+            app.logger.warning(f"Failed to save player record: {e}")
+        
+        return unicode_jsonify({
+            "success": True,
+            "data": response_data,
+            "fetched_at": datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error fetching player info for UID {uid}: {e}")
+        return unicode_jsonify({
+            "error": "Failed to fetch player information",
+            "uid": uid,
+            "details": str(e)
+        }, 500)
 
 @app.route('/tokens')
 def view_tokens():

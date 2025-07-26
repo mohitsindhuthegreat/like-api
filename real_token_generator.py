@@ -531,6 +531,9 @@ class RealTokenGenerator:
                 uid = str(account.get("uid", ""))
                 password = account.get("password", "")
             
+            # Convert UID to string if it's a number
+            uid = str(uid).strip()
+            
             # Validate UID format (should be 10 digits)
             if not uid or not uid.isdigit() or len(uid) != 10:
                 logger.warning(f"❌ Invalid UID format: {uid} (should be 10 digits)")
@@ -594,8 +597,12 @@ class RealTokenGenerator:
                     valid_accounts.append(account)
                 else:
                     invalid_count += 1
-                    guest_info = account.get("guest_account_info", {})
-                    uid = guest_info.get("com.garena.msdk.guest_uid", "unknown")
+                    # Handle both formats for error reporting
+                    if "guest_account_info" in account:
+                        guest_info = account.get("guest_account_info", {})
+                        uid = guest_info.get("com.garena.msdk.guest_uid", "unknown")
+                    else:
+                        uid = account.get("uid", "unknown")
                     logger.warning(f"❌ Skipping invalid account {i}: UID {uid}")
             
             logger.info(f"✅ Account validation complete for {file_path}: {len(valid_accounts)} valid, {invalid_count} invalid")
