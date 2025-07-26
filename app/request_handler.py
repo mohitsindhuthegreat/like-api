@@ -1,9 +1,9 @@
 import aiohttp
 import asyncio
 import requests
-from app.utils import load_tokens
-from app.encryption import encrypt_message
-from app.protobuf_handler import create_like_protobuf, decode_protobuf
+from utils import load_tokens
+from encryption import encrypt_message
+from protobuf_handler import create_like_protobuf, decode_protobuf
 
 
 async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
@@ -66,6 +66,7 @@ async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
 
 
 async def send_multiple_requests(uid, server_name, url):
+    import random
     region = server_name
     protobuf_message = create_like_protobuf(uid, region)
     if protobuf_message is None:
@@ -78,9 +79,18 @@ async def send_multiple_requests(uid, server_name, url):
     if tokens is None:
         return None
 
-    # Send likes using ALL available tokens for maximum impact
+    # Use only 105 random tokens instead of all tokens
+    max_tokens_to_use = min(105, len(tokens))
+    if len(tokens) > max_tokens_to_use:
+        # Randomly select 105 tokens for better distribution
+        selected_tokens = random.sample(tokens, max_tokens_to_use)
+    else:
+        selected_tokens = tokens
+    
+    print(f"🎯 Using {len(selected_tokens)} random tokens out of {len(tokens)} available for UID {uid}")
+    
     successful_requests = 0
-    max_concurrent = min(15, len(tokens))  # Controlled concurrency for stability
+    max_concurrent = min(10, len(selected_tokens))  # Reduced concurrency for better rate limiting
     
     semaphore = asyncio.Semaphore(max_concurrent)
     
@@ -91,8 +101,8 @@ async def send_multiple_requests(uid, server_name, url):
                 return 1
             return 0
     
-    # Use ALL available tokens for maximum like sending
-    tasks = [send_with_semaphore(tokens[i]["token"]) for i in range(len(tokens))]
+    # Use only selected 105 random tokens
+    tasks = [send_with_semaphore(selected_tokens[i]["token"]) for i in range(len(selected_tokens))]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
     # Count successful requests

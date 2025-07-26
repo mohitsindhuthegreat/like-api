@@ -1,7 +1,7 @@
 import binascii
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
-from app.protobuf_handler import create_uid_protobuf
+from protobuf_handler import create_uid_protobuf
 
 
 def encrypt_message(plaintext):
