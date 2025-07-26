@@ -1,15 +1,5 @@
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.orm import DeclarativeBase
+from app import db
 from datetime import datetime
-import os
-
-class Base(DeclarativeBase):
-    pass
-
-db = SQLAlchemy(model_class=Base)
-
-# Database will be initialized by main app
 
 class PlayerRecord(db.Model):
     __tablename__ = 'player_records'

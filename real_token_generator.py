@@ -36,8 +36,8 @@ class RealTokenGenerator:
         self.is_running = False
         self.generation_thread = None
         self.tokens_lock = Lock()
-        # Rate limiting semaphore to control concurrent requests
-        self.request_semaphore = Semaphore(4)  # Max 4 concurrent requests
+        # Enhanced rate limiting semaphore to control concurrent requests
+        self.request_semaphore = Semaphore(2)  # Max 2 concurrent requests for better rate limiting
         # Create persistent session for reuse
         self.session = requests.Session()
         self.session.verify = False
@@ -684,8 +684,8 @@ class RealTokenGenerator:
 
                 logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
                 
-                # Add small delay before each request to further avoid rate limiting
-                time.sleep(0.4)  # Increased delay for better rate limiting
+                # Enhanced delay for large-scale token generation (1000+ accounts)
+                time.sleep(0.8)  # Increased delay for better rate limiting with 1000+ accounts
                 
                 token_result = self.generate_real_jwt_token(uid, password)
                 
@@ -721,8 +721,8 @@ class RealTokenGenerator:
             for i, account in enumerate(accounts)
         ]
         
-        # Use ThreadPoolExecutor with ultra-aggressive rate limiting to avoid HTTP 429 errors
-        max_workers = min(3, total_accounts)  # Reduced to 3 for better rate control
+        # Ultra-conservative rate limiting for 1000+ account token generation
+        max_workers = min(2, total_accounts)  # Reduced to 2 for maximum rate control with large account sets
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit tasks with delays to avoid overwhelming the API
@@ -778,9 +778,9 @@ class RealTokenGenerator:
             
         self.is_running = True
         
-        # Schedule token generation every 4 hours
-        schedule.every(4).hours.do(self.generate_all_tokens)
-        logger.info("⏰ Automatic token refresh set for every 4 hours")
+        # Schedule token generation every 6 hours
+        schedule.every(6).hours.do(self.generate_all_tokens)
+        logger.info("⏰ Automatic token refresh set for every 6 hours")
         
         # Generate tokens immediately on start
         threading.Thread(target=self.generate_all_tokens, daemon=True).start()
@@ -793,7 +793,7 @@ class RealTokenGenerator:
         self.generation_thread = threading.Thread(target=run_scheduler, daemon=True)
         self.generation_thread.start()
         
-        logger.info("🔄 REAL JWT Token generator started - will regenerate tokens every 4 hours")
+        logger.info("🔄 REAL JWT Token generator started - will regenerate tokens every 6 hours")
 
     def stop_scheduler(self):
         """Stop the automatic token generation scheduler"""

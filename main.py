@@ -1,55 +1,28 @@
-from flask import Flask, request, Response, render_template_string
+from flask import request, Response
 import asyncio
 import json
 import os
 from datetime import datetime
 from google.protobuf.json_format import MessageToJson
-from app.utils import load_tokens
-from app.encryption import enc
-from app.request_handler import make_request, send_multiple_requests
+import sys
+sys.path.append('./app')
+from utils import load_tokens
+from encryption import enc
+from request_handler import make_request, send_multiple_requests
 from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now, generate_single_token
+
+# Import Flask app setup from app.py
+from app import app, db
+
 try:
-    from models import db, PlayerRecord, TokenRecord
+    from models import PlayerRecord, TokenRecord
     DATABASE_AVAILABLE = True
+    print("✅ Using custom Neon database for data storage")
 except ImportError as e:
     print(f"⚠️ Database models not available: {e}")
     DATABASE_AVAILABLE = False
+
 from nickname_processor import nickname_processor
-
-app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
-
-# Configure custom Neon database
-custom_database_url = "postgresql://neondb_owner:npg_2wvRQWkasIr9@ep-old-king-a1qaotvu-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-os.environ["DATABASE_URL"] = custom_database_url
-app.config["SQLALCHEMY_DATABASE_URI"] = custom_database_url
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-}
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# Configure Flask to properly handle Unicode in JSON responses - ENHANCED
-app.config['JSON_AS_ASCII'] = False
-app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
-try:
-    app.json.ensure_ascii = False
-    app.json.sort_keys = False
-except AttributeError:
-    # Fallback for older Flask versions
-    pass
-
-# Custom JSON encoder to ensure proper Unicode display
-import json
-from flask.json.provider import DefaultJSONProvider
-
-class UnicodeJSONProvider(DefaultJSONProvider):
-    def dumps(self, obj, **kwargs):
-        kwargs.setdefault('ensure_ascii', False)
-        kwargs.setdefault('separators', (',', ':'))
-        return json.dumps(obj, **kwargs)
-
-app.json = UnicodeJSONProvider(app)
 
 # Custom jsonify function for proper Unicode display
 def unicode_jsonify(data, status_code=200):
@@ -61,17 +34,6 @@ def unicode_jsonify(data, status_code=200):
         mimetype='application/json; charset=utf-8'
     )
     return response
-
-# Initialize database with Flask app
-if DATABASE_AVAILABLE:
-    try:
-        db.init_app(app)
-        with app.app_context():
-            db.create_all()
-        print("✅ Using custom Neon database for data storage")
-    except Exception as e:
-        print(f"❌ Database setup error: {e}")
-        DATABASE_AVAILABLE = False
 
 # Internal storage for player records - NO EXTERNAL DATABASE
 player_records = {}
