@@ -33,6 +33,14 @@ async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
                     async with session.post(url, data=edata, headers=headers) as response:
                         if response.status == 200:
                             return await response.text()
+                        elif response.status == 401:
+                            # Token expired or invalid - don't retry
+                            print(f"🔒 Token expired/invalid for UID {uid} (HTTP 401)")
+                            return None
+                        elif response.status == 403:
+                            # Token forbidden - likely expired
+                            print(f"🚫 Token forbidden for UID {uid} (HTTP 403)")
+                            return None
                         elif response.status == 429:
                             # Rate limited - progressive backoff
                             if attempt < max_retries:
@@ -65,7 +73,7 @@ async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
         return None
 
 
-async def send_multiple_requests(uid, server_name, url):
+async def send_multiple_requests(uid, server_name, url, token_count=None):
     import random
     region = server_name
     protobuf_message = create_like_protobuf(uid, region)
@@ -79,18 +87,59 @@ async def send_multiple_requests(uid, server_name, url):
     if tokens is None:
         return None
 
-    # Use only 105 random tokens instead of all tokens
-    max_tokens_to_use = min(105, len(tokens))
-    if len(tokens) > max_tokens_to_use:
-        # Randomly select 105 tokens for better distribution
-        selected_tokens = random.sample(tokens, max_tokens_to_use)
+    # Smart rotation system to prevent account overuse
+    if token_count is None:
+        # Use smart rotation - different subset each time to prevent overuse
+        import hashlib
+        from datetime import datetime
+        
+        total_tokens = len(tokens)
+        
+        # Create truly random selection for perfect rotation every time
+        import time
+        current_time = int(time.time())  # Use current timestamp for true randomness
+        seed_string = f"{uid}_{server_name}_{current_time}_{total_tokens}"
+        seed = int(hashlib.md5(seed_string.encode()).hexdigest(), 16) % (2**32)
+        random.seed(seed)
+        
+        # Optimized rotation for maximum efficiency and account protection
+        if server_name == "IND":
+            # For India: Use exactly 200 random tokens per request for better like delivery
+            tokens_to_use = min(200, total_tokens)
+        elif server_name == "PK":
+            # For Pakistan: Use all available accounts for maximum success
+            tokens_to_use = total_tokens
+        else:
+            # For other servers: Use 60-80% of available tokens
+            tokens_to_use = min(150, int(total_tokens * 0.7))
+        
+        # Randomly select tokens for this request
+        selected_tokens = random.sample(tokens, tokens_to_use)
+        if server_name == "IND":
+            print(f"🇮🇳 India rotation: Using exactly 200 random tokens out of {total_tokens} for maximum likes")
+        elif server_name == "PK":
+            print(f"🇵🇰 Pakistan rotation: Using ALL {total_tokens} accounts for maximum success rate")
+        else:
+            print(f"🌍 {server_name} rotation: Using {tokens_to_use} tokens out of {total_tokens} available")
+        print(f"♻️ Perfect random selection ensures excellent token rotation")
     else:
-        selected_tokens = tokens
-    
-    print(f"🎯 Using {len(selected_tokens)} random tokens out of {len(tokens)} available for UID {uid}")
+        # Use specified number of random tokens for backward compatibility
+        max_tokens_to_use = min(token_count, len(tokens))
+        if len(tokens) > max_tokens_to_use:
+            # Randomly select tokens for better distribution
+            selected_tokens = random.sample(tokens, max_tokens_to_use)
+        else:
+            selected_tokens = tokens
+        print(f"🎯 Using {len(selected_tokens)} random tokens out of {len(tokens)} available for UID {uid}")
     
     successful_requests = 0
-    max_concurrent = min(10, len(selected_tokens))  # Reduced concurrency for better rate limiting
+    # Optimized concurrency for faster API response
+    if server_name == "IND":
+        max_concurrent = 25  # Higher concurrency for India's 200 tokens for faster response
+    elif server_name == "PK":
+        max_concurrent = 30  # Maximum concurrency for Pakistan's full token usage
+    else:
+        max_concurrent = 20  # Moderate for other servers
     
     semaphore = asyncio.Semaphore(max_concurrent)
     
@@ -99,9 +148,12 @@ async def send_multiple_requests(uid, server_name, url):
             result = await send_request(encrypted_uid, token, url, uid)
             if result is not None:
                 return 1
-            return 0
+            else:
+                # Token might be expired or invalid, skip it
+                print(f"❌ Skipping expired/invalid token for UID {uid}")
+                return 0
     
-    # Use only selected 105 random tokens
+    # Use ALL selected tokens for maximum success rate
     tasks = [send_with_semaphore(selected_tokens[i]["token"]) for i in range(len(selected_tokens))]
     results = await asyncio.gather(*tasks, return_exceptions=True)
     
