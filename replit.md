@@ -63,7 +63,17 @@ This is a Flask API service for Free Fire game-like bot functionality with multi
 - **Unicode Processing**: ✅ PERFECT (Korean characters: 리틀뿊5803S)
 - **Deployment Ready**: ✅ ALL PLATFORMS (Vercel, Render, Netlify, Docker)
 
-## Recent Changes (July 26, 2025)
+## Recent Changes (August 2, 2025)
+- **✅ OB50 UPDATE COMPLETED**: Updated Free Fire Token Generator for latest OB50 version compatibility
+  - Updated protobuf GameData with OB50 version code "1.114.1" and latest build number "2025080201"
+  - Updated ReleaseVersion header from "OB49" to "OB50" for API compatibility
+  - Enhanced rate limiting for OB50 API stability (reduced concurrent requests to 1, increased delays to 5.0s)
+  - Updated timeouts to 30 seconds for better OB50 API stability
+  - Fixed TokenRecord constructor issues and improved database integration
+  - Enhanced semaphore control for single concurrent token generation requests
+  - Successfully migrated from Replit Agent to standard Replit environment with OB50 compatibility
+
+## Previous Changes (July 26, 2025)
 - **✅ NEW PLAYER INFO ENDPOINT ADDED**: Created comprehensive `/info` endpoint for Free Fire player information
   - Fetches detailed player data from external API: https://glob-info.vercel.app/info
   - Returns organized player info: nickname, level, region, likes, honor score, game stats
