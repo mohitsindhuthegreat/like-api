@@ -17,7 +17,7 @@ async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
             "Content-Type": "application/x-www-form-urlencoded",
             "X-Unity-Version": "2018.4.11f1",
             "X-GA": "v1 1",
-            "ReleaseVersion": "OB49",
+            "ReleaseVersion": "OB50",
         }
         
         # Enhanced retry logic for specific UIDs
