@@ -4,20 +4,18 @@ import json
 import os
 from datetime import datetime
 from google.protobuf.json_format import MessageToJson
-import sys
-sys.path.append('./app')
-from utils import load_tokens
-from encryption import enc
-from request_handler import make_request, send_multiple_requests
+from app.utils import load_tokens
+from app.encryption import enc
+from app.request_handler import make_request, send_multiple_requests
 from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now, generate_single_token
 
 # Import Flask app setup from app.py
 from app import app, db
 
 try:
-    from models import PlayerRecord, TokenRecord
+    from app.models import PlayerRecord, TokenRecord
     DATABASE_AVAILABLE = True
-    print("✅ Using custom Neon database for data storage")
+    print("✅ Using Replit database for data storage")
 except ImportError as e:
     print(f"⚠️ Database models not available: {e}")
     DATABASE_AVAILABLE = False

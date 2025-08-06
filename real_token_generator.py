@@ -36,16 +36,16 @@ class RealTokenGenerator:
         self.is_running = False
         self.generation_thread = None
         self.tokens_lock = Lock()
-        # Rate limiting semaphore to control concurrent requests
-        self.request_semaphore = Semaphore(4)  # Max 4 concurrent requests
+        # Optimized rate limiting for 6-hour cycles - balanced speed and stability
+        self.request_semaphore = Semaphore(2)  # Allow 2 concurrent requests for faster processing
         # Create persistent session for reuse
         self.session = requests.Session()
         self.session.verify = False
-        # Configure session with connection pooling
+        # Enhanced connection pooling for better performance with 6-hour cycles
         adapter = requests.adapters.HTTPAdapter(
-            pool_connections=10,
-            pool_maxsize=20,
-            max_retries=2
+            pool_connections=15,
+            pool_maxsize=30,
+            max_retries=3
         )
         self.session.mount('http://', adapter)
         self.session.mount('https://', adapter)
@@ -105,8 +105,8 @@ class RealTokenGenerator:
                     "client_id": "100067"
                 }
                 
-                # Enhanced timeout for problematic UIDs
-                timeout = 15 if uid == "2926998273" else 10
+                # Optimized timeout for faster processing with 6-hour cycles
+                timeout = 12 if uid == "2926998273" else 8
                 res = self.session.post(url, headers=headers, data=data, timeout=timeout)
                 
                 if res.status_code == 200:
@@ -653,8 +653,46 @@ class RealTokenGenerator:
         except Exception as e:
             logger.error(f"Database token save error: {str(e)}")
 
+    def check_token_cooldown(self, uid, region_name):
+        """Check if UID is in 6-hour cooldown period (aligned with generation schedule)"""
+        from app import app, db
+        from app.models import TokenGenerationCooldown
+        from datetime import datetime, timedelta
+        
+        with app.app_context():
+            try:
+                cooldown_record = TokenGenerationCooldown.query.filter_by(uid=uid).first()
+                if cooldown_record:
+                    # Check if 6 hours have passed (aligned with generation schedule)
+                    time_since_last = datetime.utcnow() - cooldown_record.last_generated
+                    if time_since_last < timedelta(hours=6):
+                        remaining_time = timedelta(hours=6) - time_since_last
+                        logger.info(f"⏳ UID {uid} is in cooldown. Remaining: {remaining_time}")
+                        return False
+                    else:
+                        # Cooldown expired, update the record
+                        cooldown_record.last_generated = datetime.utcnow()
+                        cooldown_record.server_name = region_name
+                        db.session.commit()
+                        logger.info(f"✅ UID {uid} cooldown expired, proceeding with token generation")
+                        return True
+                else:
+                    # First time generating token for this UID
+                    new_cooldown = TokenGenerationCooldown(
+                        uid=uid,
+                        server_name=region_name,
+                        last_generated=datetime.utcnow()
+                    )
+                    db.session.add(new_cooldown)
+                    db.session.commit()
+                    logger.info(f"🆕 First token generation for UID {uid}")
+                    return True
+            except Exception as e:
+                logger.error(f"❌ Error checking cooldown for UID {uid}: {str(e)}")
+                return True  # Allow generation if database error
+
     def process_single_account(self, account_data):
-        """Process a single account for token generation with enhanced validation and rate limiting"""
+        """Process a single account for token generation with 5-hour cooldown and rate limiting"""
         account, i, total_accounts, region_name = account_data
         
         # Use semaphore to limit concurrent requests
@@ -682,10 +720,14 @@ class RealTokenGenerator:
                     uid = str(account.get('uid'))
                     password = account.get('password')
 
+                # Check 5-hour cooldown before processing
+                if not self.check_token_cooldown(uid, region_name):
+                    return None  # Skip this UID due to cooldown
+
                 logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
                 
-                # Add small delay before each request to further avoid rate limiting
-                time.sleep(0.4)  # Increased delay for better rate limiting
+                # Much longer delay to completely avoid rate limiting
+                time.sleep(1.2)  # 1.2 second delay between each token generation
                 
                 token_result = self.generate_real_jwt_token(uid, password)
                 
@@ -721,16 +763,16 @@ class RealTokenGenerator:
             for i, account in enumerate(accounts)
         ]
         
-        # Use ThreadPoolExecutor with ultra-aggressive rate limiting to avoid HTTP 429 errors
-        max_workers = min(3, total_accounts)  # Reduced to 3 for better rate control
+        # Use ThreadPoolExecutor with maximum rate limiting to avoid HTTP 429 errors
+        max_workers = 1  # Only 1 worker at a time for absolute rate limit protection
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit tasks with delays to avoid overwhelming the API
+            # Submit tasks with longer delays to avoid overwhelming the API
             future_to_account = {}
             for i, account_data in enumerate(account_data_list):
-                # Add small delay between submissions to spread out the load
-                if i > 0 and i % 3 == 0:  # Every 3 submissions, wait longer
-                    time.sleep(0.8)
+                # Add delay between every submission to completely avoid rate limits
+                if i > 0:  # Delay after every submission except the first
+                    time.sleep(2.0)  # 2 second delay between each task submission
                 future = executor.submit(self.process_single_account, account_data)
                 future_to_account[future] = account_data
             
@@ -778,9 +820,9 @@ class RealTokenGenerator:
             
         self.is_running = True
         
-        # Schedule token generation every 4 hours
-        schedule.every(4).hours.do(self.generate_all_tokens)
-        logger.info("⏰ Automatic token refresh set for every 4 hours")
+        # Schedule token generation every 6 hours
+        schedule.every(6).hours.do(self.generate_all_tokens)
+        logger.info("⏰ Automatic token refresh set for every 6 hours")
         
         # Generate tokens immediately on start
         threading.Thread(target=self.generate_all_tokens, daemon=True).start()
@@ -793,7 +835,7 @@ class RealTokenGenerator:
         self.generation_thread = threading.Thread(target=run_scheduler, daemon=True)
         self.generation_thread.start()
         
-        logger.info("🔄 REAL JWT Token generator started - will regenerate tokens every 4 hours")
+        logger.info("🔄 REAL JWT Token generator started - will regenerate tokens every 6 hours")
 
     def stop_scheduler(self):
         """Stop the automatic token generation scheduler"""
