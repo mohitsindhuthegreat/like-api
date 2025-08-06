@@ -454,7 +454,7 @@ def get_player_info():
     try:
         async def fetch_player_info_async():
             import aiohttp
-            api_url = "https://glob-info2.vercel.app/info"
+            api_url = "https://rawthug.onrender.com/info"
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{api_url}?uid={uid}") as response:
