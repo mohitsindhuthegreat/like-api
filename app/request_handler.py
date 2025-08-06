@@ -1,9 +1,9 @@
 import aiohttp
 import asyncio
 import requests
-from app.utils import load_tokens
-from app.encryption import encrypt_message
-from app.protobuf_handler import create_like_protobuf, decode_protobuf
+from .utils import load_tokens
+from .encryption import encrypt_message
+from .protobuf_handler import create_like_protobuf, decode_protobuf
 
 
 async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
@@ -20,12 +20,12 @@ async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
             "ReleaseVersion": "OB50",
         }
         
-        # Enhanced retry logic for specific UIDs
+        # Enhanced retry logic with optimized timeouts for faster processing
         if uid == "2926998273":
-            max_retries = 8  # More retries for problematic UID
-            timeout = aiohttp.ClientTimeout(total=15)  # Longer timeout
+            max_retries = 6  # Balanced retries for specific UID
+            timeout = aiohttp.ClientTimeout(total=12)  # Optimized timeout
         else:
-            timeout = aiohttp.ClientTimeout(total=8)
+            timeout = aiohttp.ClientTimeout(total=6)  # Reduced timeout for faster processing
         
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for attempt in range(max_retries + 1):
@@ -65,7 +65,7 @@ async def send_request(encrypted_uid, token, url, uid="", max_retries=3):
         return None
 
 
-async def send_multiple_requests(uid, server_name, url):
+async def send_multiple_requests(uid, server_name, url, token_count=None):
     region = server_name
     protobuf_message = create_like_protobuf(uid, region)
     if protobuf_message is None:
@@ -78,14 +78,24 @@ async def send_multiple_requests(uid, server_name, url):
     if tokens is None:
         return None
 
-    # Target: Send 200 requests for maximum impact
-    TARGET_LIKES = 150  # Higher target for better results
-    MAX_REQUESTS = min(len(tokens), 200)  # Increased to 200 requests
-    
-    print(f"🎯 Sending {MAX_REQUESTS} requests for UID {uid} (targeting {TARGET_LIKES}+ actual likes)")
+    # Enhanced like sending strategy for OB50 - Optimized for 6-hour cycles
+    if server_name == "IND":
+        # India: Use 250 random tokens for maximum likes (increased for 6-hour cycle)
+        MAX_REQUESTS = min(len(tokens), 250)
+        max_concurrent = min(12, len(tokens))  # Increased concurrency for faster processing
+        print(f"🎯 India Strategy: Sending {MAX_REQUESTS} requests for UID {uid} using random token selection")
+    elif server_name == "PK":
+        # Pakistan: Use ALL available tokens for maximum success rate
+        MAX_REQUESTS = len(tokens)
+        max_concurrent = min(10, len(tokens))  # Increased concurrency for Pakistan
+        print(f"🎯 Pakistan Strategy: Sending {MAX_REQUESTS} requests for UID {uid} using ALL tokens")
+    else:
+        # Other servers: Enhanced approach for faster processing
+        MAX_REQUESTS = min(len(tokens), 200)
+        max_concurrent = min(12, len(tokens))
+        print(f"🎯 {server_name} Strategy: Sending {MAX_REQUESTS} requests for UID {uid}")
     
     successful_requests = 0
-    max_concurrent = min(12, len(tokens))  # Increased concurrency for efficiency
     
     semaphore = asyncio.Semaphore(max_concurrent)
     
@@ -96,8 +106,17 @@ async def send_multiple_requests(uid, server_name, url):
                 return 1
             return 0
     
-    # Send requests in batches to monitor progress
-    batch_size = 40  # Increased batch size for faster processing
+    # OB50 optimized batch processing with smart delays - Enhanced for 6-hour cycle
+    if server_name == "IND":
+        batch_size = 75  # Larger batches for India - faster processing
+        batch_delay = 0.3  # Reduced delay for faster throughput
+    elif server_name == "PK": 
+        batch_size = 50  # Increased batch size for Pakistan
+        batch_delay = 0.7  # Optimized delay for Pakistan API stability
+    else:
+        batch_size = 60  # Increased batch size for faster processing
+        batch_delay = 0.5  # Reduced delay for better performance
+        
     total_sent = 0
     
     for batch_start in range(0, min(MAX_REQUESTS, len(tokens)), batch_size):
@@ -120,7 +139,11 @@ async def send_multiple_requests(uid, server_name, url):
         
         print(f"✅ Batch completed: {batch_success}/{len(batch_tokens)} successful, Total: {successful_requests}/{total_sent}")
         
-        # Continue until we've used all allocated tokens (200 max)
+        # Add delay between batches for OB50 API stability
+        if batch_start + batch_size < min(MAX_REQUESTS, len(tokens)):
+            await asyncio.sleep(batch_delay)
+        
+        # Continue until we've used all allocated tokens
         if total_sent >= MAX_REQUESTS:
             print(f"🎯 Completed all {MAX_REQUESTS} requests with {successful_requests} successful")
             break

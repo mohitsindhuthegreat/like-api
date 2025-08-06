@@ -6,7 +6,7 @@ import random
 def load_tokens(server_name):
     """Load tokens from custom Neon database with randomization for India tokens"""
     try:
-        from models import TokenRecord
+        from .models import TokenRecord
         from flask import current_app
         
         with current_app.app_context():
