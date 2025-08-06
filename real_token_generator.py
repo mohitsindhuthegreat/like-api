@@ -36,14 +36,13 @@ class RealTokenGenerator:
         self.is_running = False
         self.generation_thread = None
         self.tokens_lock = Lock()
-        # Enhanced rate limiting semaphore to control concurrent requests for OB50
-        self.request_semaphore = Semaphore(1)  # Max 1 concurrent request for OB50 compatibility
+        # Rate limiting semaphore to control concurrent requests
+        self.request_semaphore = Semaphore(4)  # Max 4 concurrent requests
         # Create persistent session for reuse
         self.session = requests.Session()
         self.session.verify = False
         # Configure session with connection pooling
-        from requests.adapters import HTTPAdapter
-        adapter = HTTPAdapter(
+        adapter = requests.adapters.HTTPAdapter(
             pool_connections=10,
             pool_maxsize=20,
             max_retries=2
@@ -106,8 +105,8 @@ class RealTokenGenerator:
                     "client_id": "100067"
                 }
                 
-                # Enhanced timeout for OB50 compatibility  
-                timeout = 30  # Further increased timeout for OB50 API stability
+                # Enhanced timeout for problematic UIDs
+                timeout = 15 if uid == "2926998273" else 10
                 res = self.session.post(url, headers=headers, data=data, timeout=timeout)
                 
                 if res.status_code == 200:
@@ -367,12 +366,12 @@ class RealTokenGenerator:
             if not token_data:
                 return None
 
-            # Step 2: Create protobuf message updated for OB50 version
+            # Step 2: Create protobuf message with exact same data as your working version
             game_data = my_pb2.GameData()
-            game_data.timestamp = "2025-08-02 03:08:15"
+            game_data.timestamp = "2024-12-05 18:15:32"
             game_data.game_name = "free fire"
             game_data.game_version = 1
-            game_data.version_code = "1.114.1"
+            game_data.version_code = "1.108.3"
             game_data.os_info = "Android OS 9 / API-28 (PI/rel.cjw.20220518.114133)"
             game_data.device_type = "Handheld"
             game_data.network_provider = "Verizon Wireless"
@@ -408,7 +407,7 @@ class RealTokenGenerator:
             game_data.field_78 = 6
             game_data.field_79 = 1
             game_data.os_architecture = "32"
-            game_data.build_number = "2025080201"
+            game_data.build_number = "2019117877"
             game_data.field_85 = 1
             game_data.graphics_backend = "OpenGLES2"
             game_data.max_texture_units = 16383
@@ -450,7 +449,7 @@ class RealTokenGenerator:
             response = None
             for attempt in range(max_attempts):
                 try:
-                    timeout = 30  # Increased timeout for OB50 compatibility
+                    timeout = 20 if uid == "2926998273" else 15
                     response = self.session.post(url, data=bytes.fromhex(edata), headers=headers, timeout=timeout)
                     
                     if response.status_code == 200:
@@ -532,9 +531,6 @@ class RealTokenGenerator:
                 uid = str(account.get("uid", ""))
                 password = account.get("password", "")
             
-            # Convert UID to string if it's a number
-            uid = str(uid).strip()
-            
             # Validate UID format (should be 10 digits)
             if not uid or not uid.isdigit() or len(uid) != 10:
                 logger.warning(f"❌ Invalid UID format: {uid} (should be 10 digits)")
@@ -598,12 +594,8 @@ class RealTokenGenerator:
                     valid_accounts.append(account)
                 else:
                     invalid_count += 1
-                    # Handle both formats for error reporting
-                    if "guest_account_info" in account:
-                        guest_info = account.get("guest_account_info", {})
-                        uid = guest_info.get("com.garena.msdk.guest_uid", "unknown")
-                    else:
-                        uid = account.get("uid", "unknown")
+                    guest_info = account.get("guest_account_info", {})
+                    uid = guest_info.get("com.garena.msdk.guest_uid", "unknown")
                     logger.warning(f"❌ Skipping invalid account {i}: UID {uid}")
             
             logger.info(f"✅ Account validation complete for {file_path}: {len(valid_accounts)} valid, {invalid_count} invalid")
@@ -644,11 +636,12 @@ class RealTokenGenerator:
                         uid = token_data.get('uid', 'unknown')
                         token_str = token_data.get('token', '')
                         
-                        new_token = TokenRecord()
-                        new_token.uid = uid
-                        new_token.server_name = server_name
-                        new_token.token = token_str
-                        new_token.is_active = True
+                        new_token = TokenRecord(
+                            uid=uid,
+                            server_name=server_name,
+                            token=token_str,
+                            is_active=True
+                        )
                         db.session.add(new_token)
                     except Exception as token_error:
                         logger.warning(f"Failed to save individual token: {token_error}")
@@ -691,8 +684,8 @@ class RealTokenGenerator:
 
                 logger.info(f"Generating REAL JWT token for {region_name} account {i}/{total_accounts} (UID: {uid})")
                 
-                # Enhanced delay for OB50 compatibility - much slower rate to avoid 503 errors
-                time.sleep(5.0)  # Much slower rate for OB50 API stability
+                # Add small delay before each request to further avoid rate limiting
+                time.sleep(0.4)  # Increased delay for better rate limiting
                 
                 token_result = self.generate_real_jwt_token(uid, password)
                 
@@ -728,8 +721,8 @@ class RealTokenGenerator:
             for i, account in enumerate(accounts)
         ]
         
-        # Ultra-conservative rate limiting for 1000+ account token generation
-        max_workers = min(2, total_accounts)  # Reduced to 2 for maximum rate control with large account sets
+        # Use ThreadPoolExecutor with ultra-aggressive rate limiting to avoid HTTP 429 errors
+        max_workers = min(3, total_accounts)  # Reduced to 3 for better rate control
         
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit tasks with delays to avoid overwhelming the API
@@ -785,9 +778,9 @@ class RealTokenGenerator:
             
         self.is_running = True
         
-        # Schedule token generation every 6 hours
-        schedule.every(6).hours.do(self.generate_all_tokens)
-        logger.info("⏰ Automatic token refresh set for every 6 hours")
+        # Schedule token generation every 4 hours
+        schedule.every(4).hours.do(self.generate_all_tokens)
+        logger.info("⏰ Automatic token refresh set for every 4 hours")
         
         # Generate tokens immediately on start
         threading.Thread(target=self.generate_all_tokens, daemon=True).start()
@@ -800,7 +793,7 @@ class RealTokenGenerator:
         self.generation_thread = threading.Thread(target=run_scheduler, daemon=True)
         self.generation_thread.start()
         
-        logger.info("🔄 REAL JWT Token generator started - will regenerate tokens every 6 hours")
+        logger.info("🔄 REAL JWT Token generator started - will regenerate tokens every 4 hours")
 
     def stop_scheduler(self):
         """Stop the automatic token generation scheduler"""

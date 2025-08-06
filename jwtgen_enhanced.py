@@ -80,10 +80,10 @@ def generate_enhanced_jwt_token(uid, password):
             return None
 
         game_data = my_pb2.GameData()
-        game_data.timestamp = "2025-08-02 03:13:45"
+        game_data.timestamp = "2024-12-05 18:15:32"
         game_data.game_name = "free fire"
         game_data.game_version = 1
-        game_data.version_code = "1.114.1"
+        game_data.version_code = "1.108.3"
         game_data.os_info = "Android OS 9 / API-28 (PI/rel.cjw.20220518.114133)"
         game_data.device_type = "Handheld"
         game_data.network_provider = "Verizon Wireless"
@@ -119,7 +119,7 @@ def generate_enhanced_jwt_token(uid, password):
         game_data.field_78 = 6
         game_data.field_79 = 1
         game_data.os_architecture = "32"
-        game_data.build_number = "2025080201"
+        game_data.build_number = "2019117877"
         game_data.field_85 = 1
         game_data.graphics_backend = "OpenGLES2"
         game_data.max_texture_units = 16383
