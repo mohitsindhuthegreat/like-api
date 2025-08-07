@@ -177,7 +177,8 @@ def handle_requests():
     # If no server specified, try to auto-detect the correct server
     if not server_name:
         app.logger.info(f"Auto-detecting server for UID {uid}")
-        # Try servers in order of likelihood
+        # Try servers in order of likelihood with RANDOM token selection
+        import random
         servers_to_try = ["IND", "PK", "BD", "SG"]
         for test_server in servers_to_try:
             with app.app_context():
@@ -185,8 +186,9 @@ def handle_requests():
                 if tokens and len(tokens) > 0:
                     encrypted_uid = enc(uid)
                     if encrypted_uid:
-                        # Try with first token to test if UID exists on this server
-                        result = make_request(encrypted_uid, test_server, tokens[0]["token"])
+                        # Try with RANDOM token to test if UID exists on this server
+                        random_token = random.choice(tokens)["token"]
+                        result = make_request(encrypted_uid, test_server, random_token)
                         if result is not None:
                             server_name = test_server
                             app.logger.info(f"✓ Found UID {uid} on server {test_server}")
@@ -202,24 +204,30 @@ def handle_requests():
                 if tokens is None or len(tokens) == 0:
                     raise Exception("Failed to load tokens.")
             
-            # Try multiple tokens if first one fails
+            # Try multiple tokens with RANDOM selection to avoid always using same token first
+            import random
             token_used = None
             before = None
             encrypted_uid = None
             
-            for i, token_data in enumerate(tokens[:5]):  # Try first 5 tokens
+            # RANDOMIZE token order to prevent always using same token first
+            available_tokens = tokens[:5] if len(tokens) >= 5 else tokens
+            random.shuffle(available_tokens)  # Randomize the order
+            app.logger.info(f"🔀 Randomized {len(available_tokens)} tokens for UID {uid} to avoid repeated failures")
+            
+            for i, token_data in enumerate(available_tokens):
                 token = token_data["token"]
                 encrypted_uid = enc(uid)
                 
-                app.logger.info(f"Trying token {i+1}/5 for UID {uid}")
+                app.logger.info(f"Trying random token {i+1}/{len(available_tokens)} for UID {uid}")
                 before = make_request(encrypted_uid, server_name, token)
                 
                 if before is not None:
                     token_used = token
-                    app.logger.info(f"Successfully got player info with token {i+1}")
+                    app.logger.info(f"✅ Successfully got player info with random token {i+1}")
                     break
                 else:
-                    app.logger.warning(f"Token {i+1} failed for UID {uid}")
+                    app.logger.warning(f"❌ Random token {i+1} failed for UID {uid}")
             
             if before is None:
                 raise Exception(f"Failed to retrieve initial player info with {min(5, len(tokens))} tokens. Server: {server_name}, UID: {uid}")

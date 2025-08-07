@@ -619,7 +619,8 @@ class RealTokenGenerator:
         """Save tokens to the custom Neon database"""
         try:
             # Import here to avoid circular imports
-            from models import db, TokenRecord
+            from app import db
+            from app.models import TokenRecord
             from main import app
             
             # Determine server name from file path
@@ -652,6 +653,46 @@ class RealTokenGenerator:
                 
         except Exception as e:
             logger.error(f"Database token save error: {str(e)}")
+
+    def save_individual_token_to_database(self, uid: str, token: str, server_name: str = "IND") -> bool:
+        """Save individual token to database immediately after generation"""
+        try:
+            from app import app, db
+            from app.models import TokenRecord
+            from datetime import datetime
+            
+            with app.app_context():
+                # Check if token already exists for this UID
+                existing = TokenRecord.query.filter_by(uid=uid, server_name=server_name.upper()).first()
+                
+                if existing:
+                    # Update existing token
+                    existing.token = token
+                    existing.generated_at = datetime.utcnow()
+                    existing.is_active = True
+                    logger.info(f"🔄 Updated existing token for UID {uid}")
+                else:
+                    # Create new token record
+                    new_token = TokenRecord(
+                        uid=str(uid),
+                        server_name=server_name.upper(),
+                        token=token,
+                        generated_at=datetime.utcnow(),
+                        is_active=True
+                    )
+                    db.session.add(new_token)
+                    logger.info(f"➕ Added new token for UID {uid}")
+                
+                db.session.commit()
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Individual token save error for UID {uid}: {e}")
+            try:
+                db.session.rollback()
+            except:
+                pass
+            return False
 
     def check_token_cooldown(self, uid, region_name):
         """Check if UID is in 6-hour cooldown period (aligned with generation schedule)"""
@@ -734,6 +775,14 @@ class RealTokenGenerator:
                 if token_result:
                     token_result["uid"] = uid  # Add UID to token data
                     logger.info(f"✅ Generated REAL JWT token for UID {uid}")
+                    
+                    # IMMEDIATELY save individual token to database
+                    try:
+                        self.save_individual_token_to_database(uid, token_result['token'], region_name)
+                        logger.info(f"💾 Auto-saved token for UID {uid} to database")
+                    except Exception as save_error:
+                        logger.error(f"❌ Failed to auto-save token for UID {uid}: {save_error}")
+                    
                     return token_result
                 else:
                     logger.warning(f"❌ Failed to generate token for UID {uid}")
@@ -792,10 +841,35 @@ class RealTokenGenerator:
             
         return len(successful_tokens)
 
+    def clear_old_tokens_from_database(self):
+        """Clear all old tokens from database before generating new ones (6-hour cycle)"""
+        try:
+            from app import app, db
+            from app.models import TokenRecord
+            
+            with app.app_context():
+                # Remove ALL old tokens before generating fresh ones
+                ind_deleted = TokenRecord.query.filter_by(server_name='IND').delete()
+                pk_deleted = TokenRecord.query.filter_by(server_name='PK').delete()
+                db.session.commit()
+                
+                logger.info(f"🗑️ 6-hour cleanup: Removed {ind_deleted} IND + {pk_deleted} PK old tokens")
+                return True
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to clear old tokens: {e}")
+            return False
+
     def generate_all_tokens(self):
-        """Generate tokens for all regions"""
+        """Generate tokens for all regions with 6-hour cleanup cycle"""
         logger.info("🚀 Starting automatic REAL JWT token generation for all regions...")
         
+        # STEP 1: Clear old tokens (6-hour cycle cleanup)
+        logger.info("🧹 Step 1: Clearing old tokens from database...")
+        self.clear_old_tokens_from_database()
+        
+        # STEP 2: Generate fresh tokens for all regions
+        logger.info("⚡ Step 2: Generating fresh tokens...")
         regions = [
             ("IND_ACC.json", "tokens/ind.json", "India"),
             ("PK_ACC.json", "tokens/pk.json", "Pakistan")
@@ -810,7 +884,18 @@ class RealTokenGenerator:
             except Exception as e:
                 logger.error(f"Failed to generate tokens for {region_name}: {str(e)}")
         
-        logger.info(f"🎉 REAL JWT token generation cycle completed! Total tokens generated: {total_generated}")
+        # STEP 3: Verify database has new tokens
+        try:
+            from app import app
+            from app.models import TokenRecord
+            with app.app_context():
+                ind_count = TokenRecord.query.filter_by(server_name='IND', is_active=True).count()
+                pk_count = TokenRecord.query.filter_by(server_name='PK', is_active=True).count()
+                logger.info(f"📊 Database verification: IND={ind_count}, PK={pk_count} tokens saved")
+        except Exception as verify_error:
+            logger.error(f"❌ Database verification failed: {verify_error}")
+        
+        logger.info(f"🎉 6-hour cycle completed! Old tokens cleared, {total_generated} fresh tokens generated!")
 
     def start_scheduler(self):
         """Start the automatic token generation scheduler"""
