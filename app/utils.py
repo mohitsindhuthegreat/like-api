@@ -10,7 +10,11 @@ def load_tokens(server_name):
         from flask import current_app
         
         with current_app.app_context():
+            # Try both server name formats to ensure compatibility
             tokens = TokenRecord.query.filter_by(server_name=server_name.upper(), is_active=True).all()
+            if not tokens and server_name.upper() == "IND":
+                # Also try "INDIA" format
+                tokens = TokenRecord.query.filter_by(server_name="INDIA", is_active=True).all()
             if tokens:
                 token_list = []
                 for token_record in tokens:
