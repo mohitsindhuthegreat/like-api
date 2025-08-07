@@ -20,15 +20,15 @@ def load_tokens(server_name):
                         "server": server_name.upper()
                     })
                 
-                # Enhanced randomization for India tokens to avoid API errors
-                if server_name.upper() == "IND" and len(token_list) > 0:
+                # Enhanced randomization for ALL servers to avoid API errors
+                if len(token_list) > 0:
                     # Create random starting point to avoid always using same tokens
                     random_start = random.randint(0, len(token_list) - 1)
                     # Rearrange tokens starting from random position
                     token_list = token_list[random_start:] + token_list[:random_start]
                     # Additional shuffle for better distribution
                     random.shuffle(token_list)
-                    print(f"🔀 India tokens randomized from position {random_start}/{len(token_list)} - avoiding repeated token usage")
+                    print(f"🔀 {server_name.upper()} tokens randomized from position {random_start}/{len(token_list)} - avoiding repeated token usage")
                 
                 print(f"📊 Loaded {len(token_list)} tokens from custom Neon database for {server_name.upper()} server")
                 return token_list
@@ -37,4 +37,20 @@ def load_tokens(server_name):
                 return []
     except Exception as e:
         print(f"❌ Database token loading error: {e}")
-        return []
+        print(f"⚠️ Falling back to JSON token files for {server_name.upper()}")
+        
+        # Fallback to JSON files with randomization
+        try:
+            json_file = f"tokens/{server_name.lower()}.json"
+            if os.path.exists(json_file):
+                with open(json_file, 'r') as f:
+                    tokens_data = json.load(f)
+                    if tokens_data and len(tokens_data) > 0:
+                        # Apply randomization to JSON tokens too
+                        random.shuffle(tokens_data)
+                        print(f"🔀 {server_name.upper()} JSON tokens randomized - {len(tokens_data)} tokens loaded")
+                        return tokens_data
+            return []
+        except Exception as fallback_error:
+            print(f"❌ JSON fallback also failed: {fallback_error}")
+            return []
