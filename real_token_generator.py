@@ -616,12 +616,11 @@ class RealTokenGenerator:
             return False
     
     def save_tokens_to_database(self, tokens: List[Dict], file_path: str):
-        """Save tokens to the custom Neon database"""
+        """Save tokens to the database"""
         try:
             # Import here to avoid circular imports
-            from app import db
+            from app import app, db
             from app.models import TokenRecord
-            from main import app
             
             # Determine server name from file path
             server_name = "IND" if "ind.json" in file_path else "PK"
@@ -696,41 +695,45 @@ class RealTokenGenerator:
 
     def check_token_cooldown(self, uid, region_name):
         """Check if UID is in 6-hour cooldown period (aligned with generation schedule)"""
-        from app import app, db
-        from app.models import TokenGenerationCooldown
-        from datetime import datetime, timedelta
-        
-        with app.app_context():
-            try:
-                cooldown_record = TokenGenerationCooldown.query.filter_by(uid=uid).first()
-                if cooldown_record:
-                    # Check if 6 hours have passed (aligned with generation schedule)
-                    time_since_last = datetime.utcnow() - cooldown_record.last_generated
-                    if time_since_last < timedelta(hours=6):
-                        remaining_time = timedelta(hours=6) - time_since_last
-                        logger.info(f"⏳ UID {uid} is in cooldown. Remaining: {remaining_time}")
-                        return False
+        try:
+            from app import app, db
+            from app.models import TokenGenerationCooldown
+            from datetime import datetime, timedelta
+            
+            with app.app_context():
+                try:
+                    cooldown_record = TokenGenerationCooldown.query.filter_by(uid=uid).first()
+                    if cooldown_record:
+                        # Check if 6 hours have passed (aligned with generation schedule)
+                        time_since_last = datetime.utcnow() - cooldown_record.last_generated
+                        if time_since_last < timedelta(hours=6):
+                            remaining_time = timedelta(hours=6) - time_since_last
+                            logger.info(f"⏳ UID {uid} is in cooldown. Remaining: {remaining_time}")
+                            return False
+                        else:
+                            # Cooldown expired, update the record
+                            cooldown_record.last_generated = datetime.utcnow()
+                            cooldown_record.server_name = region_name
+                            db.session.commit()
+                            logger.info(f"✅ UID {uid} cooldown expired, proceeding with token generation")
+                            return True
                     else:
-                        # Cooldown expired, update the record
-                        cooldown_record.last_generated = datetime.utcnow()
-                        cooldown_record.server_name = region_name
+                        # First time generating token for this UID
+                        new_cooldown = TokenGenerationCooldown(
+                            uid=uid,
+                            server_name=region_name,
+                            last_generated=datetime.utcnow()
+                        )
+                        db.session.add(new_cooldown)
                         db.session.commit()
-                        logger.info(f"✅ UID {uid} cooldown expired, proceeding with token generation")
+                        logger.info(f"🆕 First token generation for UID {uid}")
                         return True
-                else:
-                    # First time generating token for this UID
-                    new_cooldown = TokenGenerationCooldown(
-                        uid=uid,
-                        server_name=region_name,
-                        last_generated=datetime.utcnow()
-                    )
-                    db.session.add(new_cooldown)
-                    db.session.commit()
-                    logger.info(f"🆕 First token generation for UID {uid}")
-                    return True
-            except Exception as e:
-                logger.error(f"❌ Error checking cooldown for UID {uid}: {str(e)}")
-                return True  # Allow generation if database error
+                except Exception as e:
+                    logger.error(f"❌ Error checking cooldown for UID {uid}: {str(e)}")
+                    return True  # Allow generation if database error
+        except Exception as e:
+            logger.error(f"❌ Cooldown check failed for UID {uid}: {str(e)}")
+            return True  # Allow generation if database error
 
     def process_single_account(self, account_data):
         """Process a single account for token generation with 5-hour cooldown and rate limiting"""

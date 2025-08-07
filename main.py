@@ -9,7 +9,7 @@ from app.encryption import enc
 from app.request_handler import make_request, send_multiple_requests
 from real_token_generator import real_token_generator, start_token_generation, stop_token_generation, get_generator_status, generate_tokens_now, generate_single_token
 
-# Import Flask app setup from app.py
+# Import Flask app setup 
 from app import app, db
 
 try:
@@ -596,16 +596,32 @@ def view_tokens():
             try:
                 with app.app_context():
                     if region == "IND" or not region:
+                        # Try both IND and INDIA formats
                         ind_tokens = TokenRecord.query.filter_by(server_name='IND', is_active=True).limit(10).all()
+                        if not ind_tokens:
+                            ind_tokens = TokenRecord.query.filter_by(server_name='INDIA', is_active=True).limit(10).all()
+                        
+                        total_count = TokenRecord.query.filter_by(server_name='IND', is_active=True).count()
+                        if total_count == 0:
+                            total_count = TokenRecord.query.filter_by(server_name='INDIA', is_active=True).count()
+                            
                         tokens_data["india"] = {
-                            "total": TokenRecord.query.filter_by(server_name='IND', is_active=True).count(),
+                            "total": total_count,
                             "tokens": [{"token": t.token, "uid": t.uid, "generated_at": t.generated_at.isoformat()} for t in ind_tokens]
                         }
                     
                     if region == "PK" or not region:
+                        # Try both PK and PAKISTAN formats
                         pk_tokens = TokenRecord.query.filter_by(server_name='PK', is_active=True).limit(10).all()
+                        if not pk_tokens:
+                            pk_tokens = TokenRecord.query.filter_by(server_name='PAKISTAN', is_active=True).limit(10).all()
+                            
+                        total_count = TokenRecord.query.filter_by(server_name='PK', is_active=True).count()
+                        if total_count == 0:
+                            total_count = TokenRecord.query.filter_by(server_name='PAKISTAN', is_active=True).count()
+                            
                         tokens_data["pakistan"] = {
-                            "total": TokenRecord.query.filter_by(server_name='PK', is_active=True).count(),
+                            "total": total_count,
                             "tokens": [{"token": t.token, "uid": t.uid, "generated_at": t.generated_at.isoformat()} for t in pk_tokens]
                         }
                         
